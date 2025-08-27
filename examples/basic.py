@@ -1,0 +1,170 @@
+"""
+Example FastAPI application demonstrating fastapi-qengine usage.
+"""
+
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional
+
+from beanie import Document, init_beanie
+from fastapi import Depends, FastAPI
+from pydantic import BaseModel
+from pymongo import AsyncMongoClient
+
+from fastapi_qengine import QueryEngine, create_beanie_dependency
+
+
+# Define Beanie models
+class Product(Document):
+    """Product model for demonstration."""
+
+    name: str
+    category: str
+    price: float
+    in_stock: bool
+    tags: List[str] = []
+
+    class Settings:
+        name = "products"
+
+
+class ProductResponse(BaseModel):
+    """Response model for products."""
+
+    name: str
+    category: str
+    price: float
+    in_stock: bool
+    tags: List[str]
+
+
+# FastAPI app
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database connection."""
+    # For demo purposes - in production use proper connection string
+    client = AsyncMongoClient("mongodb://localhost:27017")
+    await init_beanie(database=client.demo_db, document_models=[Product])
+
+    # Insert sample data if collection is empty
+    if await Product.count() == 0:
+        sample_products = [
+            Product(name="Laptop", category="electronics", price=999.99, in_stock=True, tags=["computer", "portable"]),
+            Product(name="Mouse", category="electronics", price=29.99, in_stock=True, tags=["computer", "accessory"]),
+            Product(name="Book", category="books", price=19.99, in_stock=False, tags=["education", "fiction"]),
+            Product(
+                name="Smartphone", category="electronics", price=699.99, in_stock=True, tags=["mobile", "communication"]
+            ),
+            Product(name="Coffee Mug", category="home", price=12.99, in_stock=True, tags=["kitchen", "ceramic"]),
+        ]
+        await Product.insert_many(sample_products)
+
+    yield
+
+
+app = FastAPI(title="fastapi-qengine Demo", version="0.1.0", lifespan=lifespan)
+
+
+# Create QueryEngine dependency
+query_engine = create_beanie_dependency(Product)
+
+
+@app.get("/products", response_model=List[ProductResponse])
+async def get_products(query: dict = Depends(query_engine)):
+    """
+    Get products with optional filtering.
+
+    Examples:
+
+    Simple filters (nested params format):
+    - /products?filter[where][category]=electronics
+    - /products?filter[where][price][$gt]=50
+    - /products?filter[where][in_stock]=true&filter[order]=-price
+
+    Complex filters (JSON string format):
+    - /products?filter={"where":{"$or":[{"category":"electronics"},{"price":{"$lt":20}}]}}
+    - /products?filter={"where":{"price":{"$gte":10,"$lte":100}},"order":"name"}
+    """
+    if query:
+        # Build Beanie query from compiled filter
+        beanie_query = Product.find(query.get("filter", {}))
+
+        # Apply sorting if specified
+        if "sort" in query:
+            beanie_query = beanie_query.sort(query["sort"])
+
+        # Apply projection if specified
+        if "projection" in query:
+            beanie_query = beanie_query.project(**query["projection"])
+
+        products = await beanie_query.to_list()
+    else:
+        # No filter - return all products
+        products = await Product.find_all().to_list()
+
+    return products
+
+
+@app.get("/products/search")
+async def search_products(
+    category: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    in_stock: Optional[bool] = None,
+    query_engine: QueryEngine = Depends(create_beanie_dependency(Product)),
+):
+    """
+    Alternative endpoint showing programmatic query building.
+    """
+    # Build filter dictionary programmatically
+    filter_dict: Dict[str, Any] = {"where": {}}
+
+    if category:
+        filter_dict["where"]["category"] = category
+
+    if min_price is not None or max_price is not None:
+        price_filter = {}
+        if min_price is not None:
+            price_filter["$gte"] = min_price
+        if max_price is not None:
+            price_filter["$lte"] = max_price
+        filter_dict["where"]["price"] = price_filter
+
+    if in_stock is not None:
+        filter_dict["where"]["in_stock"] = in_stock
+
+    # Process through query engine
+    if filter_dict["where"]:
+        compiled_query = query_engine.compile_dict(filter_dict)
+        products = await Product.find(compiled_query.get("filter", {})).to_list()
+    else:
+        products = await Product.find_all().to_list()
+
+    return products
+
+
+@app.get("/")
+async def root():
+    """Root endpoint with usage examples."""
+    return {
+        "message": "fastapi-qengine Demo API",
+        "examples": {
+            "simple_filters": [
+                "/products?filter[where][category]=electronics",
+                "/products?filter[where][price][$gt]=50",
+                "/products?filter[where][in_stock]=true&filter[order]=-price",
+            ],
+            "complex_filters": [
+                '/products?filter={"where":{"$or":[{"category":"electronics"},{"price":{"$lt":20}}]}}',
+                '/products?filter={"where":{"price":{"$gte":10,"$lte":100}},"order":"name"}',
+            ],
+            "programmatic": "/products/search?category=electronics&min_price=10&max_price=1000",
+        },
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8500)
