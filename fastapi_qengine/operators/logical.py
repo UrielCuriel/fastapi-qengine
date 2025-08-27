@@ -1,15 +1,16 @@
 """
 Logical operators for query building.
 """
-from typing import Any, List, Dict
+
 from abc import ABC, abstractmethod
+from typing import Any, List
 
 from ..core.types import LogicalOperator
 
 
 class LogicalOperatorHandler(ABC):
     """Base class for logical operator handlers."""
-    
+
     @abstractmethod
     def compile(self, conditions: List[Any], backend: str) -> Any:
         """Compile logical operator with conditions."""
@@ -18,7 +19,7 @@ class LogicalOperatorHandler(ABC):
 
 class AndOperatorHandler(LogicalOperatorHandler):
     """Handler for $and operator."""
-    
+
     def compile(self, conditions: List[Any], backend: str) -> Any:
         """Compile $and operator."""
         if backend == "beanie" or backend == "pymongo":
@@ -32,7 +33,7 @@ class AndOperatorHandler(LogicalOperatorHandler):
 
 class OrOperatorHandler(LogicalOperatorHandler):
     """Handler for $or operator."""
-    
+
     def compile(self, conditions: List[Any], backend: str) -> Any:
         """Compile $or operator."""
         if backend == "beanie" or backend == "pymongo":
@@ -46,7 +47,7 @@ class OrOperatorHandler(LogicalOperatorHandler):
 
 class NorOperatorHandler(LogicalOperatorHandler):
     """Handler for $nor operator."""
-    
+
     def compile(self, conditions: List[Any], backend: str) -> Any:
         """Compile $nor operator."""
         if backend == "beanie" or backend == "pymongo":
@@ -58,6 +59,6 @@ class NorOperatorHandler(LogicalOperatorHandler):
 # Registry of logical operators
 LOGICAL_OPERATORS = {
     LogicalOperator.AND: AndOperatorHandler(),
-    LogicalOperator.OR: OrOperatorHandler(), 
+    LogicalOperator.OR: OrOperatorHandler(),
     LogicalOperator.NOR: NorOperatorHandler(),
 }

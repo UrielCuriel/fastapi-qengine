@@ -44,39 +44,53 @@ class FilterSchemaGenerator:
 
     def _get_model_fields(self) -> Dict[str, Dict[str, Any]]:
         """Extract field information from model."""
-        fields = {}
-
-        # Try Pydantic v2
         if hasattr(self.model_class, "model_fields"):
-            for field_name, field_info in self.model_class.model_fields.items():
-                fields[field_name] = {
-                    "type": field_info.annotation,
-                    "required": field_info.is_required(),
-                    "description": getattr(field_info, "description", None),
-                }
-        # Try Pydantic v1
+            return self._extract_pydantic_v2_fields()
         elif hasattr(self.model_class, "__fields__"):
-            for field_name, field_info in self.model_class.__fields__.items():
-                desc = None
-                if field_info.field_info:
-                    desc = getattr(field_info.field_info, "description", None)
-                fields[field_name] = {"type": field_info.type_, "required": field_info.required, "description": desc}
+            return self._extract_pydantic_v1_fields()
         else:
-            # Fallback to type hints
-            try:
-                type_hints = get_type_hints(self.model_class)
-                for field_name, field_type in type_hints.items():
-                    if not field_name.startswith("_"):
-                        fields[field_name] = {"type": field_type, "required": True, "description": None}
-            except (NameError, AttributeError):
-                # Basic fallback
-                fields = {
-                    "id": {"type": str, "required": False, "description": "ID"},
-                    "name": {"type": str, "required": False, "description": "Name"},
-                    "created_at": {"type": datetime, "required": False, "description": "Created at"},
-                }
+            return self._extract_fallback_fields()
 
+    def _extract_pydantic_v2_fields(self) -> Dict[str, Dict[str, Any]]:
+        """Extract fields from Pydantic v2 model."""
+        fields = {}
+        for field_name, field_info in self.model_class.model_fields.items():
+            fields[field_name] = {
+                "type": field_info.annotation,
+                "required": field_info.is_required(),
+                "description": getattr(field_info, "description", None),
+            }
         return fields
+
+    def _extract_pydantic_v1_fields(self) -> Dict[str, Dict[str, Any]]:
+        """Extract fields from Pydantic v1 model."""
+        fields = {}
+        for field_name, field_info in self.model_class.__fields__.items():
+            desc = None
+            if field_info.field_info:
+                desc = getattr(field_info.field_info, "description", None)
+            fields[field_name] = {"type": field_info.type_, "required": field_info.required, "description": desc}
+        return fields
+
+    def _extract_fallback_fields(self) -> Dict[str, Dict[str, Any]]:
+        """Extract fields using type hints or basic fallback."""
+        try:
+            type_hints = get_type_hints(self.model_class)
+            fields = {}
+            for field_name, field_type in type_hints.items():
+                if not field_name.startswith("_"):
+                    fields[field_name] = {"type": field_type, "required": True, "description": None}
+            return fields
+        except (NameError, AttributeError):
+            return self._get_basic_fallback_fields()
+
+    def _get_basic_fallback_fields(self) -> Dict[str, Dict[str, Any]]:
+        """Return basic fallback fields when all else fails."""
+        return {
+            "id": {"type": str, "required": False, "description": "ID"},
+            "name": {"type": str, "required": False, "description": "Name"},
+            "created_at": {"type": datetime, "required": False, "description": "Created at"},
+        }
 
     def _get_openapi_type(self, python_type: Type) -> Dict[str, Any]:
         """Convert Python type to OpenAPI type."""

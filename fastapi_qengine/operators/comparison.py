@@ -1,15 +1,16 @@
 """
 Comparison operators for query building.
 """
-from typing import Any, Dict, Union
+
 from abc import ABC, abstractmethod
+from typing import Any
 
 from ..core.types import ComparisonOperator
 
 
 class ComparisonOperatorHandler(ABC):
     """Base class for comparison operator handlers."""
-    
+
     @abstractmethod
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile comparison operator with field and value."""
@@ -18,7 +19,7 @@ class ComparisonOperatorHandler(ABC):
 
 class EqualOperatorHandler(ComparisonOperatorHandler):
     """Handler for $eq operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $eq operator."""
         if backend in ["beanie", "pymongo"]:
@@ -33,7 +34,7 @@ class EqualOperatorHandler(ComparisonOperatorHandler):
 
 class NotEqualOperatorHandler(ComparisonOperatorHandler):
     """Handler for $ne operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $ne operator."""
         if backend in ["beanie", "pymongo"]:
@@ -47,7 +48,7 @@ class NotEqualOperatorHandler(ComparisonOperatorHandler):
 
 class GreaterThanOperatorHandler(ComparisonOperatorHandler):
     """Handler for $gt operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $gt operator."""
         if backend in ["beanie", "pymongo"]:
@@ -61,7 +62,7 @@ class GreaterThanOperatorHandler(ComparisonOperatorHandler):
 
 class GreaterThanEqualOperatorHandler(ComparisonOperatorHandler):
     """Handler for $gte operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $gte operator."""
         if backend in ["beanie", "pymongo"]:
@@ -75,7 +76,7 @@ class GreaterThanEqualOperatorHandler(ComparisonOperatorHandler):
 
 class LessThanOperatorHandler(ComparisonOperatorHandler):
     """Handler for $lt operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $lt operator."""
         if backend in ["beanie", "pymongo"]:
@@ -89,7 +90,7 @@ class LessThanOperatorHandler(ComparisonOperatorHandler):
 
 class LessThanEqualOperatorHandler(ComparisonOperatorHandler):
     """Handler for $lte operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $lte operator."""
         if backend in ["beanie", "pymongo"]:
@@ -103,7 +104,7 @@ class LessThanEqualOperatorHandler(ComparisonOperatorHandler):
 
 class InOperatorHandler(ComparisonOperatorHandler):
     """Handler for $in operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $in operator."""
         if backend in ["beanie", "pymongo"]:
@@ -117,7 +118,7 @@ class InOperatorHandler(ComparisonOperatorHandler):
 
 class NotInOperatorHandler(ComparisonOperatorHandler):
     """Handler for $nin operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $nin operator."""
         if backend in ["beanie", "pymongo"]:
@@ -131,7 +132,7 @@ class NotInOperatorHandler(ComparisonOperatorHandler):
 
 class RegexOperatorHandler(ComparisonOperatorHandler):
     """Handler for $regex operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $regex operator."""
         if backend in ["beanie", "pymongo"]:
@@ -145,7 +146,7 @@ class RegexOperatorHandler(ComparisonOperatorHandler):
 
 class ExistsOperatorHandler(ComparisonOperatorHandler):
     """Handler for $exists operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $exists operator."""
         if backend in ["beanie", "pymongo"]:
@@ -159,7 +160,7 @@ class ExistsOperatorHandler(ComparisonOperatorHandler):
 
 class SizeOperatorHandler(ComparisonOperatorHandler):
     """Handler for $size operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $size operator."""
         if backend in ["beanie", "pymongo"]:
@@ -170,7 +171,7 @@ class SizeOperatorHandler(ComparisonOperatorHandler):
 
 class TypeOperatorHandler(ComparisonOperatorHandler):
     """Handler for $type operator."""
-    
+
     def compile(self, field: str, value: Any, backend: str) -> Any:
         """Compile $type operator."""
         if backend in ["beanie", "pymongo"]:
