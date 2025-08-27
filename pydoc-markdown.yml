@@ -1,0 +1,18 @@
+loaders:
+  - type: python
+    search_path: [fastapi_qengine]
+
+processors:
+  - type: filter
+    expression: >
+      not name.startswith('test') and 
+      not 'test' in name.lower() and
+      not 'tests' in name.lower() and
+      default()
+    exclude_private: false
+  - type: smart
+
+renderer:
+  type: nuxt
+  content_dir: docs/content
+  output_dir: 3.references
