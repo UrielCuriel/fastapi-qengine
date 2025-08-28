@@ -9,8 +9,8 @@ from beanie import Document, init_beanie
 from fastapi import Depends, FastAPI
 from pymongo import AsyncMongoClient
 
-from fastapi_qengine import QueryEngine, create_beanie_dependency, create_response_model
-from fastapi_qengine.backends.beanie import BeanieQueryResult
+from fastapi_qengine import create_qe_dependency, create_response_model, process_filter_to_ast
+from fastapi_qengine.backends.beanie import BeanieQueryCompiler, BeanieQueryEngine, BeanieQueryResult
 
 
 # Define Beanie models
@@ -58,12 +58,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="fastapi-qengine Demo", version="0.1.0", lifespan=lifespan)
 
 
-# Create QueryEngine dependency
-query_engine = create_beanie_dependency(Product)
+# Create explicit backend engine and dependency
+beanie_engine = BeanieQueryEngine(Product)
+qe_dep = create_qe_dependency(beanie_engine)
 
 
 @app.get("/products", response_model=List[ProductResponse], response_model_exclude_none=True)
-async def get_products(query_result: BeanieQueryResult = Depends(query_engine)):
+async def get_products(query_result: BeanieQueryResult = Depends(qe_dep)):
     """
     Get products with optional filtering.
 
@@ -94,7 +95,7 @@ async def search_products(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     in_stock: Optional[bool] = None,
-    query_engine: QueryEngine = Depends(create_beanie_dependency(Product)),
+    # Using explicit engine + pipeline helpers (no dependency)
 ):
     """
     Alternative endpoint showing programmatic query building.
@@ -116,10 +117,11 @@ async def search_products(
     if in_stock is not None:
         filter_dict["where"]["in_stock"] = in_stock
 
-    # Process through query engine
+    # Process through core pipeline and compile for Beanie/MongoDB
     if filter_dict["where"]:
-        compiled_query = query_engine.compile_dict(filter_dict)
-        products = await Product.find(compiled_query.get("filter", {})).to_list()
+        ast = process_filter_to_ast(filter_dict)
+        mongo = BeanieQueryCompiler().compile(ast)
+        products = await Product.find(mongo.get("filter", {})).to_list()
     else:
         products = await Product.find_all().to_list()
 

@@ -8,14 +8,14 @@ title: Backend personalizado con SQLAlchemy
 Ejemplo educativo: no forma parte del paquete. Úsalo como base para tu implementación real.
 ::
 
-Esta guía muestra cómo crear un backend para SQLAlchemy implementando un `QueryCompiler` propio y registrándolo en el `compiler_registry`.
+Esta guía muestra cómo crear un backend para SQLAlchemy implementando un `QueryCompiler` propio y exponiendo un engine explícito (sin registro global).
 
 ## Pasos
 
 1) Crea `fastapi_qengine/backends/sqlalchemy.py` con un `SQLAlchemyQueryCompiler` que extienda `BaseQueryCompiler`.
 2) Implementa un `Adapter` mínimo que componga un `select()` con filtros, orden y proyección.
-3) Registra el backend: `compiler_registry.register_compiler("sqlalchemy", SQLAlchemyQueryCompiler)`.
-4) Úsalo en FastAPI: `QueryEngine(model_class=YourModel, backend="sqlalchemy")`.
+3) Crea `SqlAlchemyQueryEngine` que use el compiler para construir el query final.
+4) Úsalo en FastAPI: `create_qe_dependency(SqlAlchemyQueryEngine(YourModel))`.
 
 ## Ejemplo mínimo
 
@@ -73,18 +73,14 @@ class SQLAlchemyQueryCompiler(BaseQueryCompiler):
 Uso en FastAPI:
 
 ```python [usage.py]
-from fastapi_qengine.core.registry import compiler_registry
-from fastapi_qengine.backends.sqlalchemy import SQLAlchemyQueryCompiler
-from fastapi_qengine import QueryEngine
+from fastapi_qengine import create_qe_dependency
+from fastapi_qengine.backends.sqlalchemy import SqlAlchemyQueryEngine
 
-# registra en el arranque
-compiler_registry.register_compiler("sqlalchemy", lambda: SQLAlchemyQueryCompiler(Product))
-
-# dependencia
-QueryEngine(Product, backend="sqlalchemy")
+engine = SqlAlchemyQueryEngine(Product)
+qe_dep = create_qe_dependency(engine)
 ```
 
 ::alert{type="info"}
-- Puedes reutilizar `operators` para mapear operadores por backend; hoy las ramas de SQLAlchemy son place‑holders, por lo que un mapeo directo en el compiler es práctico.
+- Puedes reutilizar `operators` para mapear operadores por backend.
 - Implementa tests de integración en `tests/` para validar filtros, orden y proyección.
 ::

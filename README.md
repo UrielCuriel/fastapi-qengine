@@ -58,10 +58,12 @@ async def init_db():
 ```python
 # main.py
 from fastapi import FastAPI, Depends
-from fastapi_qengine import QueryEngine
 from fastapi_pagination import Page, add_pagination
 from fastapi_pagination.ext.beanie import apaginate
 from contextlib import asynccontextmanager
+
+from fastapi_qengine import create_qe_dependency
+from fastapi_qengine.backends.beanie import BeanieQueryEngine
 
 app = FastAPI()
 
@@ -71,14 +73,18 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     yield
-    # Shutdown (if needed)
 
 app = FastAPI(lifespan=lifespan)
 
-# QueryEngine procesa el parámetro "filter" y lo convierte en un query de Beanie
+# Engine explícito por backend
+beanie_engine = BeanieQueryEngine(Product)
+qe_dep = create_qe_dependency(beanie_engine)
+
 @app.get("/products", response_model=Page[Product])
-async def get_products(query: dict = Depends(QueryEngine(Product))):
-    return await apaginate(Product.find(query))
+async def get_products(q = Depends(qe_dep)):
+    # q es una tupla (query, projection_model, sort) lista para apaginate
+    query, projection_model, sort = q
+    return await apaginate(query, projection_model=projection_model, sort=sort)
 
 add_pagination(app)
 ```

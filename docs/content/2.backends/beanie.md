@@ -27,9 +27,9 @@ Construye proyección `{campo: 1}`.
 Retorna `{"filter": ..., "sort": ..., "projection": ...}`.
 ::
 
-## Registro y uso
+## Uso con engine explícito
 
-- `QueryEngine` registra automáticamente el backend `beanie` si no está presente.
+- Cada backend expone su engine; en Beanie: `BeanieQueryEngine`.
 - Helper: `compile_to_mongodb(ast)` devuelve directamente los componentes MongoDB.
 
 Ejemplo con FastAPI + Beanie
@@ -37,7 +37,8 @@ Ejemplo con FastAPI + Beanie
 ```python [routes.py]
 from fastapi import FastAPI, Depends
 from beanie import Document
-from fastapi_qengine import QueryEngine
+from fastapi_qengine import create_qe_dependency
+from fastapi_qengine.backends.beanie import BeanieQueryEngine
 
 class Product(Document):
     name: str
@@ -46,15 +47,14 @@ class Product(Document):
 
 app = FastAPI()
 
+engine = BeanieQueryEngine(Product)
+qe_dep = create_qe_dependency(engine)
+
 @app.get("/products")
-async def list_products(query = Depends(QueryEngine(Product))):
-    # query -> {"filter": {...}, "sort": [...], "projection": {...}}
-    q = Product.find(query.get("filter"))
-    if "sort" in query:
-        q = q.sort(query["sort"])  # [("price", -1)]
-    if "projection" in query:
-        q = q.project(**query["projection"])  # {"name": 1, "price": 1}
-    return await q.to_list()
+async def list_products(q = Depends(qe_dep)):
+    # q -> (query, projection_model, sort)
+    query, projection_model, sort = q
+    return await query.to_list()
 ```
 
 Ejemplos de entrada → salida

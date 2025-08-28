@@ -25,7 +25,7 @@ from .core import (
 )
 
 # Main interface
-from .dependency import QueryEngine, create_beanie_dependency, create_pymongo_dependency
+from .dependency import create_qe_dependency, process_filter_to_ast
 
 # Operator utilities
 from .operators import create_simple_operator, register_custom_operator
@@ -34,9 +34,10 @@ __all__ = [
     # Version
     "__version__",
     # Main interface
-    "QueryEngine",
-    "create_beanie_dependency",
-    "create_pymongo_dependency",
+    # Dependency helper
+    "create_qe_dependency",
+    # Pipeline utility
+    "process_filter_to_ast",
     # Core types
     "FilterAST",
     "FilterInput",

@@ -366,51 +366,48 @@ class TestEndToEndPipeline:
     """Test complete pipeline from input to compiled query."""
 
     def test_complete_pipeline_simple(self, sample_filter_data):
-        """Test complete pipeline with simple filter."""
-        from fastapi_qengine import QueryEngine
+        """Test complete pipeline with simple filter using explicit backend."""
+        from fastapi_qengine import process_filter_to_ast
 
-        engine = QueryEngine(backend="beanie")
+        compiler = BeanieQueryCompiler()
 
-        # Test dict format
-        result = engine.compile_dict(sample_filter_data["simple_equality"])
+        ast = process_filter_to_ast(sample_filter_data["simple_equality"])
+        result = compiler.compile(ast)
 
         assert "filter" in result
         assert result["filter"]["category"] == "electronics"
 
     def test_complete_pipeline_complex(self, sample_filter_data):
-        """Test complete pipeline with complex filter."""
-        from fastapi_qengine import QueryEngine
+        """Test complete pipeline with complex filter using explicit backend."""
+        from fastapi_qengine import process_filter_to_ast
 
-        engine = QueryEngine(backend="beanie")
-
-        # Test complex query with all features
-        result = engine.compile_dict(sample_filter_data["complex_query"])
+        compiler = BeanieQueryCompiler()
+        ast = process_filter_to_ast(sample_filter_data["complex_query"])
+        result = compiler.compile(ast)
 
         assert "filter" in result
         assert "sort" in result
         assert "projection" in result
 
     def test_complete_pipeline_json_string(self, sample_json_strings):
-        """Test complete pipeline with JSON string input."""
-        from fastapi_qengine import QueryEngine
+        """Test complete pipeline with JSON string input using explicit backend."""
+        from fastapi_qengine import process_filter_to_ast
 
-        engine = QueryEngine(backend="beanie")
-
-        ast = engine.parse_only(sample_json_strings["complex"])
-        result = engine.compile_ast(ast)
+        compiler = BeanieQueryCompiler()
+        ast = process_filter_to_ast(sample_json_strings["complex"])
+        result = compiler.compile(ast)
 
         assert "filter" in result
         assert "$or" in result["filter"]
         assert "sort" in result
 
     def test_complete_pipeline_nested_params(self, sample_nested_params):
-        """Test complete pipeline with nested params."""
-        from fastapi_qengine import QueryEngine
+        """Test complete pipeline with nested params using explicit backend."""
+        from fastapi_qengine import process_filter_to_ast
 
-        engine = QueryEngine(backend="beanie")
-
-        ast = engine.parse_only(sample_nested_params["with_order"])
-        result = engine.compile_ast(ast)
+        compiler = BeanieQueryCompiler()
+        ast = process_filter_to_ast(sample_nested_params["with_order"])
+        result = compiler.compile(ast)
 
         assert "filter" in result
         assert result["filter"]["in_stock"] is True
@@ -418,25 +415,18 @@ class TestEndToEndPipeline:
 
     def test_pipeline_error_handling(self):
         """Test pipeline error handling."""
-        from fastapi_qengine import QueryEngine
+        from fastapi_qengine import process_filter_to_ast
         from fastapi_qengine.core.errors import QEngineError
-
-        engine = QueryEngine(backend="beanie")
 
         # Test invalid JSON
         with pytest.raises(QEngineError):
-            engine.parse_only('{"invalid": json}')
+            process_filter_to_ast('{"invalid": json}')
 
     def test_empty_filter_handling(self):
-        """Test handling of empty/None filters."""
-        from fastapi_qengine import QueryEngine
+        """Test handling of empty/None filters (compiler should handle empty AST)."""
+        compiler = BeanieQueryCompiler()
+        from fastapi_qengine.core.types import FilterAST
 
-        engine = QueryEngine(backend="beanie")
-
-        # Test empty dict
-        result = engine.compile_dict({})
-        assert isinstance(result, dict)
-
-        # Test None where clause
-        result = engine.compile_dict({"where": None})
+        empty_ast = FilterAST()
+        result = compiler.compile(empty_ast)
         assert isinstance(result, dict)

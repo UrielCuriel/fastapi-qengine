@@ -23,7 +23,7 @@ from .errors import (
 from .normalizer import FilterNormalizer
 from .optimizer import ASTOptimizer
 from .parser import FilterParser
-from .registry import compiler_registry, operator_registry
+from .registry import operator_registry
 from .response import create_response_model
 from .types import (
     ASTNode,
@@ -91,8 +91,7 @@ __all__ = [
     "ASTOptimizer",
     "BaseQueryCompiler",
     "QueryAdapter",
-    # Registries
-    "compiler_registry",
+    # Registry
     "operator_registry",
     # Response Model Factory
     "create_response_model",

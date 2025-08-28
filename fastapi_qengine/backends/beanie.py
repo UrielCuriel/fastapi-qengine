@@ -5,6 +5,7 @@ Beanie/PyMongo backend compiler.
 from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Union, get_args, get_origin
 
 from beanie import Document
+from beanie.odm.enums import SortDirection
 from beanie.odm.queries.aggregation import AggregationQuery
 from beanie.odm.queries.find import FindMany, FindQueryProjectionType
 from pydantic import BaseModel, ConfigDict, create_model
@@ -17,7 +18,6 @@ from ..operators.logical import LOGICAL_OPERATORS
 
 # Type variable for Document subclasses
 TDocument = TypeVar("TDocument", bound=Document)
-SortDirection = Union[int, str]
 
 # Type alias for Beanie query result tuple
 BeanieQueryResult = tuple[
@@ -29,7 +29,6 @@ BeanieQueryResult = tuple[
 
 # Type variable for Document subclasses
 TDocument = TypeVar("TDocument", bound=Document)
-SortDirection = Union[int, str]
 
 
 class _ProjectionBase(BaseModel):

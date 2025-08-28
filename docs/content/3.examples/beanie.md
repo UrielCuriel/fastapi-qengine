@@ -19,19 +19,19 @@ class Product(Document):
 
 ```python [app.py]
 from fastapi import FastAPI, Depends
-from fastapi_qengine import QueryEngine
+from fastapi_qengine import create_qe_dependency
+from fastapi_qengine.backends.beanie import BeanieQueryEngine
 from models import Product
 
 app = FastAPI()
 
+engine = BeanieQueryEngine(Product)
+qe_dep = create_qe_dependency(engine)
+
 @app.get("/products")
-async def get_products(query = Depends(QueryEngine(Product))):
-    q = Product.find(query.get("filter"))
-    if "sort" in query:
-        q = q.sort(query["sort"])  # [("price", -1)]
-    if "projection" in query:
-        q = q.project(**query["projection"])  # {"name": 1, ...}
-    return await q.to_list()
+async def get_products(q = Depends(qe_dep)):
+    query, projection_model, sort = q
+    return await query.to_list()
 
 # Ejemplos:
 # /products?filter[where][price][$gt]=50
@@ -53,19 +53,21 @@ class Product(Document):
 
 ```python [app.py]
 from fastapi import FastAPI, Depends
-from fastapi_qengine import QueryEngine
+from fastapi_qengine import create_qe_dependency
+from fastapi_qengine.backends.beanie import BeanieQueryEngine
 from fastapi_pagination import Page, add_pagination
 from fastapi_pagination.ext.beanie import apaginate
 from models import Product
 
 app = FastAPI()
 
+engine = BeanieQueryEngine(Product)
+qe_dep = create_qe_dependency(engine)
+
 @app.get("/products", response_model=Page[Product])
-async def list_products(query = Depends(QueryEngine(Product))):
-    q = Product.find(query.get("filter"))
-    if "sort" in query:
-        q = q.sort(query["sort"])  # opcional
-    return await apaginate(q)
+async def list_products(q = Depends(qe_dep)):
+    beanie_query, projection_model, sort = q
+    return await apaginate(beanie_query, projection_model=projection_model, sort=sort)
 
 add_pagination(app)
 
@@ -74,4 +76,3 @@ add_pagination(app)
 # /products?filter={"where":{"price":{"$gte":10,"$lte":50}},"order":"-price"}
 ```
 :::
-
