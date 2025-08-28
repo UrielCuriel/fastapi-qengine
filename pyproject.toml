@@ -1,18 +1,19 @@
 [project]
 name = "fastapi-qengine"
-version = "0.1.0"
+version = "0.2.0"
 description = "fastapi-qengine is an advanced query engine for FastAPI, inspired by Loopback 4's filtering system. It allows building complex queries directly from URLs with a flexible syntax."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Uriel Curiel", email = "kratoz.00616@gmail.com" }]
-license = { file = "LICENSE" }
+
+urls = { Repository = "https://github.com/urielcuriel/fastapi-qengine" }
+
 classifiers = [
     "Framework :: FastAPI",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
 ]
 keywords = ["fastapi", "beanie", "mongodb", "query", "filter", "engine"]
 dependencies = []

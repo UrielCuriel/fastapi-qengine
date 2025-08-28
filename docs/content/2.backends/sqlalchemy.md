@@ -4,7 +4,7 @@ title: Backend personalizado con SQLAlchemy
 
 # Backend personalizado con SQLAlchemy
 
-::alert{type="warning" icon="i-lucide-flask-round"}
+::u-alert{type="warning" icon="i-lucide-flask-round"}
 Ejemplo educativo: no forma parte del paquete. Úsalo como base para tu implementación real.
 ::
 
@@ -80,7 +80,7 @@ engine = SqlAlchemyQueryEngine(Product)
 qe_dep = create_qe_dependency(engine)
 ```
 
-::alert{type="info"}
+::u-alert{type="info"}
 - Puedes reutilizar `operators` para mapear operadores por backend.
 - Implementa tests de integración en `tests/` para validar filtros, orden y proyección.
 ::

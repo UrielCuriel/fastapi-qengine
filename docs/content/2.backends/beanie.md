@@ -79,7 +79,7 @@ Ejemplos de entrada → salida
 
 Notas
 
-::alert{type="info"}
+::u-alert{type="info"}
 - Igualdad simple → `{campo: valor}` (sin `$eq`).
 - Operadores: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$regex`, `$exists`, `$size`, `$type`; lógicos `$and`, `$or`, `$nor`.
 ::

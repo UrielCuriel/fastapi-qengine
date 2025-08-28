@@ -15,7 +15,7 @@ Motor de consultas para FastAPI inspirado en Loopback 4. Construye filtros compl
   ---
   color: neutral
   size: xl
-  to: /1.getting-started/installation
+  to: /getting-started/installation
   trailing-icon: i-lucide-arrow-right
   ---
   Empezar
@@ -26,7 +26,7 @@ Motor de consultas para FastAPI inspirado en Loopback 4. Construye filtros compl
   color: neutral
   icon: simple-icons-github
   size: xl
-  to: https://github.com/tuusuario/fastapi-qengine
+  to: https://github.com/urielcuriel/fastapi-qengine
   variant: outline
   ---
   GitHub

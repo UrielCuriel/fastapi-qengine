@@ -101,7 +101,7 @@ qe_dep = create_qe_dependency(engine, config=config, security_policy=policy)
 ast = process_filter_to_ast({"where": {"category": "books"}}, config=config, security_policy=policy)
 ```
 
-::alert{type="info"}
+::u-alert{type="info"}
 Los engines pueden leer `backend_settings` según sus necesidades. Consulta la documentación de cada backend para saber qué claves admite.
 ::
 

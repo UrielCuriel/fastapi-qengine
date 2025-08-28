@@ -10,7 +10,7 @@
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tuusuario/fastapi-qengine.git
+git clone https://github.com/urielcuriel/fastapi-qengine.git
 cd fastapi-qengine
 
 # Instalar dependencias de desarrollo

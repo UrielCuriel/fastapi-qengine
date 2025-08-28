@@ -6,7 +6,7 @@ providing flexible URL-based filtering with support for complex queries,
 operators, and automatic OpenAPI documentation generation.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version
 
 # Core imports
 # Backend-specific imports
@@ -31,8 +31,6 @@ from .dependency import create_qe_dependency, process_filter_to_ast
 from .operators import create_simple_operator, register_custom_operator
 
 __all__ = [
-    # Version
-    "__version__",
     # Main interface
     # Dependency helper
     "create_qe_dependency",
@@ -62,7 +60,7 @@ __all__ = [
 
 def main():
     print("fastapi-qengine: Advanced query engine for FastAPI")
-    print(f"Version: {__version__}")
+    print(f"Version: {version('fastapi-qengine')}")
     print("For usage examples, see: https://github.com/urielcuriel/fastapi-qengine")
 
 
