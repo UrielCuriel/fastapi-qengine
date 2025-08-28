@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional
 
 from beanie import Document, init_beanie
 from fastapi import Depends, FastAPI
-from pydantic import BaseModel
 from pymongo import AsyncMongoClient
 
-from fastapi_qengine import QueryEngine, create_beanie_dependency
+from fastapi_qengine import QueryEngine, create_beanie_dependency, create_response_model
+from fastapi_qengine.backends.beanie import BeanieQueryResult
 
 
 # Define Beanie models
@@ -27,15 +27,7 @@ class Product(Document):
         name = "products"
 
 
-class ProductResponse(BaseModel):
-    """Response model for products."""
-
-    name: str
-    category: str
-    price: float
-    in_stock: bool
-    tags: List[str]
-
+ProductResponse = create_response_model(Product)
 
 # FastAPI app
 
@@ -70,8 +62,8 @@ app = FastAPI(title="fastapi-qengine Demo", version="0.1.0", lifespan=lifespan)
 query_engine = create_beanie_dependency(Product)
 
 
-@app.get("/products", response_model=List[ProductResponse])
-async def get_products(query: dict = Depends(query_engine)):
+@app.get("/products", response_model=List[ProductResponse], response_model_exclude_none=True)
+async def get_products(query_result: BeanieQueryResult = Depends(query_engine)):
     """
     Get products with optional filtering.
 
@@ -86,19 +78,9 @@ async def get_products(query: dict = Depends(query_engine)):
     - /products?filter={"where":{"$or":[{"category":"electronics"},{"price":{"$lt":20}}]}}
     - /products?filter={"where":{"price":{"$gte":10,"$lte":100}},"order":"name"}
     """
+    query, _, _ = query_result
     if query:
-        # Build Beanie query from compiled filter
-        beanie_query = Product.find(query.get("filter", {}))
-
-        # Apply sorting if specified
-        if "sort" in query:
-            beanie_query = beanie_query.sort(query["sort"])
-
-        # Apply projection if specified
-        if "projection" in query:
-            beanie_query = beanie_query.project(**query["projection"])
-
-        products = await beanie_query.to_list()
+        products = await query.to_list()
     else:
         # No filter - return all products
         products = await Product.find_all().to_list()

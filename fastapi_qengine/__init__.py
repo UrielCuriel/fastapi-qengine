@@ -20,6 +20,7 @@ from .core import (
     SecurityError,
     SecurityPolicy,
     ValidationError,
+    create_response_model,
     default_config,
 )
 
@@ -53,6 +54,8 @@ __all__ = [
     # Operator utilities
     "register_custom_operator",
     "create_simple_operator",
+    # Response Model Factory
+    "create_response_model",
 ]
 
 

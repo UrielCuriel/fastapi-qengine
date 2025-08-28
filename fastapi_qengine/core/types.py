@@ -5,13 +5,16 @@ Type definitions for fastapi-qengine.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, TypeAlias, Union
+from typing import Any, Dict, List, Optional, Protocol, TypeAlias, TypeVar, Union
 
 # Basic type aliases
 FilterValue: TypeAlias = Union[str, int, float, bool, List[Any], Dict[str, Any]]
 FilterDict: TypeAlias = Dict[str, Any]
 OrderSpec: TypeAlias = str
 FieldsSpec: TypeAlias = Dict[str, int]
+
+
+T = TypeVar("T")
 
 
 class FilterFormat(Enum):

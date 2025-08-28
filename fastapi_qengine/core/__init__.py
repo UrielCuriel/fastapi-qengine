@@ -24,6 +24,7 @@ from .normalizer import FilterNormalizer
 from .optimizer import ASTOptimizer
 from .parser import FilterParser
 from .registry import compiler_registry, operator_registry
+from .response import create_response_model
 from .types import (
     ASTNode,
     BackendQuery,
@@ -93,4 +94,6 @@ __all__ = [
     # Registries
     "compiler_registry",
     "operator_registry",
+    # Response Model Factory
+    "create_response_model",
 ]

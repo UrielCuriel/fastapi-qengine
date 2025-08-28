@@ -143,15 +143,25 @@ class QueryEngine:
         Returns:
             Backend-specific query object
         """
-        compiler = compiler_registry.get_compiler(self.backend)
-        return compiler.compile(ast)
+        if self.backend == "beanie" and self.model_class:
+            # Use BeanieQueryEngine for proper Beanie integration
+            from .backends.beanie import BeanieQueryEngine
 
-    def _get_empty_result(self) -> Dict[str, Any]:
-        """Get result for empty/no filter."""
-        if self.backend == "beanie":
-            return {}  # Empty MongoDB query
+            engine = BeanieQueryEngine(self.model_class)
+            return engine.build_query(ast)
         else:
-            return {}
+            # Use registered compiler for other backends
+            compiler = compiler_registry.get_compiler(self.backend)
+            return compiler.compile(ast)
+
+    def _get_empty_result(self) -> Any:
+        """Get result for empty/no filter."""
+        if self.backend == "beanie" and self.model_class:
+            # Return tuple format for Beanie with empty query
+            query = self.model_class.find()
+            return (query, None, None)
+        else:
+            return {}  # Empty query for other backends
 
     # Convenience methods for different use cases
 
