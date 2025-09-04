@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Protocol, TypeAlias, TypeVar, Unio
 # Basic type aliases
 FilterValue: TypeAlias = Union[str, int, float, bool, List[Any], Dict[str, Any]]
 FilterDict: TypeAlias = Dict[str, Any]
-OrderSpec: TypeAlias = str
+OrderSpec: TypeAlias = Union[str, List[str]]
 FieldsSpec: TypeAlias = Dict[str, int]
 
 

@@ -92,13 +92,58 @@ class FilterNormalizer:
         return normalized
 
     def _normalize_order(self, order: OrderSpec) -> str:
-        """Normalize order specification."""
-        if not isinstance(order, str):
-            raise ValidationError("'order' clause must be a string")
+        """
+        Normalize order specification to a string format.
 
-        # Basic validation - just return as-is for now
-        # More sophisticated normalization could handle multiple fields, etc.
-        return order.strip()
+        Handles the following formats:
+        1. String: "propertyName ASC" or "propertyName DESC"
+        2. Array: ["propertyName1 ASC", "propertyName2 DESC"]
+        3. Dictionary with numeric indices: {0: "propertyName1 ASC", 1: "propertyName2 DESC"}
+
+        Returns a comma-separated string format that the AST builder can process.
+        """
+        if isinstance(order, str):
+            return order.strip()
+        elif isinstance(order, list):
+            return self._normalize_order_list(order)
+        elif isinstance(order, dict):
+            return self._normalize_order_dict(order)
+        else:
+            raise ValidationError(f"'order' clause must be a string, list of strings, or dictionary, got {type(order)}")
+
+    def _normalize_order_list(self, order_list: list) -> str:
+        """Normalize a list of order specifications."""
+        order_items: list[str] = []
+        for item in order_list:
+            if not isinstance(item, str):
+                raise ValidationError(f"Order item must be a string, got {type(item)}")
+            order_items.append(item.strip())
+        return ",".join(order_items)
+
+    def _normalize_order_dict(self, order_dict: dict) -> str:
+        """Normalize a dictionary of order specifications."""
+        try:
+            return self._normalize_numeric_key_dict(order_dict)
+        except (ValueError, TypeError):
+            return self._normalize_non_numeric_dict(order_dict)
+
+    def _normalize_numeric_key_dict(self, order_dict: dict) -> str:
+        """Process dictionary with numeric keys."""
+        # Try to convert keys to integers and sort
+        sorted_keys = sorted([int(k) if isinstance(k, str) else k for k in order_dict.keys()])
+        order_items: list[str] = []
+        for key in sorted_keys:
+            actual_key = str(key) if isinstance(key, int) and str(key) in order_dict else key
+            value = order_dict[actual_key]
+            if not isinstance(value, str):
+                raise ValidationError(f"Order item must be a string, got {type(value)}")
+            order_items.append(value.strip())
+        return ",".join(order_items)
+
+    def _normalize_non_numeric_dict(self, order_dict: dict) -> str:
+        """Process dictionary with non-numeric keys."""
+        order_items = [item.strip() for item in order_dict.values() if isinstance(item, str)]
+        return ",".join(order_items)
 
     def _normalize_fields(self, fields: FieldsSpec) -> Dict[str, int]:
         """Normalize fields specification."""

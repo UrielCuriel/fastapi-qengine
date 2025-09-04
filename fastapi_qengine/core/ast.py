@@ -2,7 +2,7 @@
 AST Builder for converting normalized filter inputs to typed AST nodes.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from .errors import ParseError
 from .types import (
@@ -138,29 +138,63 @@ class ASTBuilder:
         except ValueError:
             raise ParseError(f"Unknown operator '{op_key}'")
 
-    def _build_order_nodes(self, order: str) -> List[OrderNode]:
-        """Build order nodes from order specification."""
-        if not isinstance(order, str):
-            raise ParseError("Order must be a string")
+    def _build_order_nodes(self, order: Union[str, List[str]]) -> List[OrderNode]:
+        """
+        Build order nodes from order specification.
 
+        Supports formats:
+        - String: "field1 ASC,field2 DESC"
+        - List of strings: ["field1 ASC", "field2 DESC"]
+        - Fields with "-" prefix for descending: "-field1", "field2"
+        - Fields with explicit ASC/DESC: "field1 ASC", "field2 DESC"
+        """
         order_nodes = []
 
-        # Split by comma for multiple fields
-        for field_spec in order.split(","):
+        # Handle string format
+        if isinstance(order, str):
+            # Split by comma for multiple fields
+            fields_to_process = order.split(",")
+        # Handle list format
+        elif isinstance(order, list):
+            fields_to_process = order
+        else:
+            raise ParseError(f"Order must be a string or list of strings, got {type(order)}")
+
+        for field_spec in fields_to_process:
+            if not isinstance(field_spec, str):
+                raise ParseError(f"Order specification must be a string, got {type(field_spec)}")
+
             field_spec = field_spec.strip()
             if not field_spec:
                 continue
 
-            # Check for descending order (- prefix)
+            # Check for explicit ASC/DESC format (e.g., "field ASC" or "field DESC")
             ascending = True
-            if field_spec.startswith("-"):
-                ascending = False
-                field_spec = field_spec[1:]
+            if " " in field_spec:
+                parts = field_spec.rsplit(" ", 1)
+                if len(parts) == 2:
+                    field, direction = parts
+                    field = field.strip()
+                    direction = direction.strip().upper()
 
-            if not field_spec:
+                    if direction == "DESC":
+                        ascending = False
+                    elif direction == "ASC":
+                        ascending = True
+                    else:
+                        # If the space is not followed by ASC/DESC, treat the whole string as the field name
+                        field = field_spec
+            else:
+                # Check for descending order with - prefix (legacy format)
+                field = field_spec
+                if field.startswith("-"):
+                    ascending = False
+                    field = field[1:]
+
+            if not field:
                 raise ParseError("Invalid order specification - empty field name")
 
-            order_nodes.append(OrderNode(field=field_spec, ascending=ascending))
+            order_nodes.append(OrderNode(field=field, ascending=ascending))
 
         return order_nodes
 
