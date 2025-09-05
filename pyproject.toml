@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-qengine"
-version = "0.2.0"
+version = "0.4.0"
 description = "fastapi-qengine is an advanced query engine for FastAPI, inspired by Loopback 4's filtering system. It allows building complex queries directly from URLs with a flexible syntax."
 readme = "README.md"
 requires-python = ">=3.9"
