@@ -1,5 +1,12 @@
 """
 Normalizer for filter inputs to canonical format.
+
+Enhancement: Accept operator aliases without MongoDB's "$" prefix.
+This keeps the public/global operator names neutral (e.g., eq, gt, in)
+while still normalizing to the canonical internal representation expected
+by the AST builder and backends. Logical operators (and, or, nor) and
+comparison operators (eq, ne, gt, gte, lt, lte, in, nin, regex, exists,
+size, type) are supported with or without the "$" prefix.
 """
 
 from typing import Any, Dict
@@ -10,6 +17,56 @@ from .types import FieldsSpec, FilterDict, FilterInput, OrderSpec
 
 class FilterNormalizer:
     """Normalizes filter inputs to a canonical format."""
+
+    # Mapping of logical operator aliases to canonical "$" form
+    _LOGICAL_ALIASES = {
+        "$and": "$and",
+        "$or": "$or",
+        "$nor": "$nor",
+        # alias without prefix
+        "and": "$and",
+        "or": "$or",
+        "nor": "$nor",
+    }
+
+    # Mapping of comparison operator aliases to canonical "$" form
+    _COMPARISON_ALIASES = {
+        "$eq": "$eq",
+        "$ne": "$ne",
+        "$gt": "$gt",
+        "$gte": "$gte",
+        "$lt": "$lt",
+        "$lte": "$lte",
+        "$in": "$in",
+        "$nin": "$nin",
+        "$regex": "$regex",
+        "$exists": "$exists",
+        "$size": "$size",
+        "$type": "$type",
+        # aliases without prefix
+        "eq": "$eq",
+        "ne": "$ne",
+        "gt": "$gt",
+        "gte": "$gte",
+        "lt": "$lt",
+        "lte": "$lte",
+        "in": "$in",
+        "nin": "$nin",
+        "regex": "$regex",
+        "exists": "$exists",
+        "size": "$size",
+        "type": "$type",
+    }
+
+    @classmethod
+    def _canon_logical(cls, key: str) -> str:
+        """Return canonical logical operator (with "$"), or original if unknown."""
+        return cls._LOGICAL_ALIASES.get(key, cls._LOGICAL_ALIASES.get(key.lower(), key))
+
+    @classmethod
+    def _canon_comparison(cls, key: str) -> str:
+        """Return canonical comparison operator (with "$"), or original if unknown."""
+        return cls._COMPARISON_ALIASES.get(key, cls._COMPARISON_ALIASES.get(key.lower(), key))
 
     def normalize(self, filter_input: FilterInput) -> FilterInput:
         """
@@ -56,9 +113,10 @@ class FilterNormalizer:
         normalized = {}
 
         for key, value in condition.items():
-            if key.startswith("$"):
-                # Logical operator or comparison operator
-                normalized[key] = self._normalize_operator_value(key, value)
+            # Handle logical operators with or without "$" prefix
+            logical_key = self._canon_logical(key) if isinstance(key, str) else key
+            if isinstance(logical_key, str) and logical_key in ["$and", "$or", "$nor"]:
+                normalized[logical_key] = self._normalize_operator_value(logical_key, value)
             else:
                 # Field condition
                 normalized[key] = self._normalize_field_condition(value)
@@ -85,9 +143,15 @@ class FilterNormalizer:
         # Complex condition with operators
         normalized = {}
         for op, value in condition.items():
-            if not op.startswith("$"):
-                raise ValidationError(f"Invalid operator '{op}'. Operators must start with '$'")
-            normalized[op] = value
+            if not isinstance(op, str):
+                raise ValidationError("Invalid operator type; expected string")
+            canon = self._canon_comparison(op)
+            # If after canonicalization it's still not a known "$" operator, reject
+            if not canon.startswith("$"):
+                raise ValidationError(
+                    f"Invalid operator '{op}'. Use standard names (eq, gt, in, ...) or '$' prefixed"
+                )
+            normalized[canon] = value
 
         return normalized
 

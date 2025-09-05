@@ -49,12 +49,17 @@ def process_filter_to_ast(
     return optimized_ast
 
 
-def _execute_query_on_engine(engine: Any, ast: FilterAST) -> Any:
-    """Ejecuta el AST en el motor de backend proporcionado."""
+def _execute_query_on_engine(engine: Any, ast: Optional[FilterAST]) -> Any:
+    """Ejecuta el AST (o vacío) en el motor de backend proporcionado.
+
+    Si ast es None, se convierte a un AST vacío para los motores que esperan
+    una instancia de FilterAST.
+    """
+    effective_ast = ast or FilterAST()
     if hasattr(engine, "build_query"):
-        return engine.build_query(ast)
+        return engine.build_query(effective_ast)
     if hasattr(engine, "compile"):
-        return engine.compile(ast)
+        return engine.compile(effective_ast)
     # Este error es para el desarrollador, por lo que un 500 es apropiado.
     raise HTTPException(
         status_code=500, detail="El motor proporcionado no es válido: debe tener un método 'build_query' o 'compile'."
@@ -114,8 +119,8 @@ def create_qe_dependency(
             filter_input = _get_filter_input_from_request(request, filter_param)
 
             if not filter_input:
-                # Si no hay filtro, se ejecuta una consulta vacía.
-                return _execute_query_on_engine(engine, FilterAST())
+                # Si no hay filtro, delega con None (AST vacío implícito).
+                return _execute_query_on_engine(engine, None)
 
             # La lógica de procesamiento se delega a la función existente.
             ast = process_filter_to_ast(filter_input, config=cfg, security_policy=security_policy)

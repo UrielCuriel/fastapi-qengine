@@ -27,6 +27,41 @@ class FilterValidator:
         self.config = config or ValidatorConfig()
         self.security_policy = security_policy or SecurityPolicy()
         self.validation_rules: List[ValidationRule] = []
+        # Operator alias maps to accept names without "$" prefix
+        self._logical_aliases = {
+            "$and": "$and",
+            "$or": "$or",
+            "$nor": "$nor",
+            "and": "$and",
+            "or": "$or",
+            "nor": "$nor",
+        }
+        self._comparison_aliases = {
+            "$eq": "$eq",
+            "$ne": "$ne",
+            "$gt": "$gt",
+            "$gte": "$gte",
+            "$lt": "$lt",
+            "$lte": "$lte",
+            "$in": "$in",
+            "$nin": "$nin",
+            "$regex": "$regex",
+            "$exists": "$exists",
+            "$size": "$size",
+            "$type": "$type",
+            "eq": "$eq",
+            "ne": "$ne",
+            "gt": "$gt",
+            "gte": "$gte",
+            "lt": "$lt",
+            "lte": "$lte",
+            "in": "$in",
+            "nin": "$nin",
+            "regex": "$regex",
+            "exists": "$exists",
+            "size": "$size",
+            "type": "$type",
+        }
 
     def add_validation_rule(self, rule: ValidationRule) -> None:
         """Add a custom validation rule."""
@@ -115,7 +150,7 @@ class FilterValidator:
             raise ValidationError("Where clause must be an object")
 
         for key, value in where.items():
-            if key.startswith("$"):
+            if isinstance(key, str) and self._canonical_operator(key).startswith("$"):
                 # Logical or comparison operator
                 self._validate_operator(key, value, depth)
             else:
@@ -125,6 +160,8 @@ class FilterValidator:
 
     def _validate_operator(self, operator: str, value: Any, depth: int) -> None:
         """Validate operator usage."""
+        # Canonicalize to "$" form if an alias without prefix is used
+        operator = self._canonical_operator(operator)
         # Check if operator is allowed
         if self.security_policy.allowed_operators is not None:
             operator_enum = self._get_operator_enum(operator)
@@ -282,6 +319,18 @@ class FilterValidator:
     def _get_operator_enum(self, operator: str) -> Optional[ComparisonOperator]:
         """Get ComparisonOperator enum for string operator."""
         try:
-            return ComparisonOperator(operator)
+            return ComparisonOperator(self._canonical_operator(operator))
         except ValueError:
             return None
+
+    def _canonical_operator(self, operator: str) -> str:
+        """Map operator aliases to canonical "$"-prefixed form when possible."""
+        if not isinstance(operator, str):
+            return operator
+        op_lower = operator.lower()
+        if op_lower in self._logical_aliases:
+            return self._logical_aliases[op_lower]
+        if op_lower in self._comparison_aliases:
+            return self._comparison_aliases[op_lower]
+        # If already starts with "$", keep as is
+        return operator

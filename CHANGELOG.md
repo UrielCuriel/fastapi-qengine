@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 - 2025-09-05
+
+- Feature: accept operator aliases without "$" prefix in inputs.
+  - Logical: `and`, `or`, `nor` → normalized to `$and`, `$or`, `$nor`.
+  - Comparison: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `regex`, `exists`, `size`, `type`.
+  - Implemented in `FilterNormalizer` and validated via canonicalization in `FilterValidator`.
+- Refactor: keep `$`-based internal operator format for AST/backends; backend remains responsible for dialect mapping.
+- Fix: `create_qe_dependency` now delegates no-filter case with `None` to `_execute_query_on_engine`, matching tests.
+- Compatibility: no breaking changes; legacy `$` syntax continues to work.
+
 ## 0.4.0 - 2025-09-05
 
 - Features: add flexible order parsing in `FilterNormalizer` and `ASTBuilder` supporting multiple formats:
