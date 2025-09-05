@@ -2,16 +2,27 @@
 Beanie/PyMongo backend compiler.
 """
 
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Union, get_args, get_origin
+from datetime import date, datetime
+from enum import Enum
+from typing import Any, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union, get_args, get_origin
 
 from beanie import Document
 from beanie.odm.enums import SortDirection
+from beanie.odm.fields import PydanticObjectId
 from beanie.odm.queries.aggregation import AggregationQuery
 from beanie.odm.queries.find import FindMany, FindQueryProjectionType
-from pydantic import BaseModel, ConfigDict, create_model
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    TypeAdapter,
+    create_model,
+)
+from pydantic import (
+    ValidationError as PydanticValidationError,
+)
 
 from ..core.compiler_base import BaseQueryCompiler, QueryAdapter
-from ..core.errors import CompilerError
+from ..core.errors import CompilerError, ValidationError
 from ..core.types import ASTNode, FieldCondition, FieldsNode, FilterAST, LogicalCondition, OrderNode
 from ..operators.comparison import COMPARISON_OPERATORS
 from ..operators.logical import LOGICAL_OPERATORS
@@ -145,6 +156,7 @@ class BeanieQueryEngine(Generic[TDocument]):
         """
         self.model_class = model_class
         self.compiler = BeanieQueryCompiler()
+        self._field_type_cache: Dict[str, Any] = {}
 
     def build_query(self, ast: FilterAST) -> BeanieQueryResult:
         """
@@ -159,7 +171,10 @@ class BeanieQueryEngine(Generic[TDocument]):
             - projection_model: Optional[type[DocumentProjectionType]]
             - sort: Union[None, str, list[tuple[str, SortDirection]]]
         """
-        query_components = self.compiler.compile(ast)
+        # Pre-process AST to validate and transform field values
+        validated_ast = self._validate_and_transform_ast(ast)
+
+        query_components = self.compiler.compile(validated_ast)
 
         # Start with base find query
         query = self.model_class.find()
@@ -185,6 +200,211 @@ class BeanieQueryEngine(Generic[TDocument]):
                 query = query.project(projection_model)
 
         return query, projection_model, sort_spec
+
+    def _validate_and_transform_ast(self, ast: FilterAST) -> FilterAST:
+        """
+        Validate and transform values in the AST according to model field types.
+
+        Args:
+            ast: Original FilterAST
+
+        Returns:
+            Transformed FilterAST with validated values
+        """
+        if ast.where:
+            ast.where = self._validate_and_transform_node(ast.where)
+
+        # Order nodes validation - ensure fields exist
+        if ast.order:
+            validated_order = []
+            for order_node in ast.order:
+                try:
+                    self._validate_field_exists(order_node.field)
+                    validated_order.append(order_node)
+                except ValidationError:
+                    # Skip invalid order fields
+                    continue
+            ast.order = validated_order
+
+        # Fields validation - ensure fields exist
+        if ast.fields:
+            validated_fields = {}
+            for field, include in ast.fields.fields.items():
+                base_field = field.split(".", 1)[0]  # For dot notation, check at least the base field
+                try:
+                    self._validate_field_exists(base_field)
+                    validated_fields[field] = include
+                except ValidationError:
+                    # Skip invalid fields
+                    continue
+            ast.fields.fields = validated_fields
+
+        return ast
+
+    def _validate_and_transform_node(self, node: ASTNode) -> ASTNode:
+        """
+        Recursively validate and transform a node in the AST.
+
+        Args:
+            node: AST node to validate and transform
+
+        Returns:
+            Validated and transformed AST node
+        """
+        if isinstance(node, FieldCondition):
+            # Validate field existence
+            self._validate_field_exists(node.field)
+
+            # Transform value based on field type
+            node.value = self._transform_value(node.field, node.operator, node.value)
+            return node
+
+        elif isinstance(node, LogicalCondition):
+            # Recursively validate and transform each condition
+            node.conditions = [self._validate_and_transform_node(condition) for condition in node.conditions]
+            return node
+
+        return node
+
+    def _validate_field_exists(self, field_path: str) -> None:
+        """
+        Validate that a field exists in the model.
+
+        Args:
+            field_path: Field path (can use dot notation)
+
+        Raises:
+            ValidationError: If the field doesn't exist in the model
+        """
+        parts = field_path.split(".", 1)
+        field_name = parts[0]
+
+        # Skip validation for special MongoDB operators or metadata fields
+        if field_name.startswith("$") or field_name == "_id" or field_name == "id":
+            return
+
+        # Check if field exists in model
+        model_fields = getattr(self.model_class, "model_fields", {})
+        if field_name not in model_fields:
+            model_name = getattr(self.model_class, "__name__", "Unknown")
+            raise ValidationError(f"Field '{field_name}' does not exist in model '{model_name}'", field=field_name)
+
+    def _get_field_type(self, field_name: str) -> Type:
+        """
+        Get the type of a field from the model.
+
+        Args:
+            field_name: Field name
+
+        Returns:
+            Type of the field
+        """
+        # Use cached type if available
+        if field_name in self._field_type_cache:
+            return self._field_type_cache[field_name]
+
+        # Get field type from model
+        model_fields = getattr(self.model_class, "model_fields", {})
+        if field_name not in model_fields:
+            return Any
+
+        field_info = model_fields[field_name]
+        field_type = field_info.annotation or Any
+
+        # Unwrap Optional/Union types
+        origin = get_origin(field_type)
+        if origin is Union:
+            args = get_args(field_type)
+            # Remove None from Union args to get the base type
+            non_none_args = [arg for arg in args if arg is not type(None)]
+            if len(non_none_args) == 1:
+                field_type = non_none_args[0]
+
+        # Cache the type
+        self._field_type_cache[field_name] = field_type
+        return field_type
+
+    def _transform_value(self, field_path: str, operator, value: Any) -> Any:
+        """
+        Transform a value based on the field type and operator.
+
+        Args:
+            field_path: Field path
+            operator: Comparison operator
+            value: Original value
+
+        Returns:
+            Transformed value
+        """
+        parts = field_path.split(".", 1)
+        field_name = parts[0]
+
+        # Skip transformation for special MongoDB operators
+        if field_name.startswith("$"):
+            return value
+
+        field_type = self._get_field_type(field_name)
+
+        try:
+            # Handle lists for $in and $nin operators
+            if operator in ["$in", "$nin"] and isinstance(value, list):
+                return [self._transform_scalar_value(field_type, item) for item in value]
+
+            # Handle scalar values
+            return self._transform_scalar_value(field_type, value)
+
+        except Exception as e:
+            raise ValidationError(
+                f"Failed to transform value for field '{field_path}': {str(e)}", field=field_path, value=value
+            )
+
+    def _transform_scalar_value(self, field_type: Type, value: Any) -> Any:
+        """
+        Transform a scalar value based on field type.
+
+        Args:
+            field_type: Type of the field
+            value: Original value
+
+        Returns:
+            Transformed value
+        """
+        # Skip None values
+        if value is None:
+            return None
+
+        # Handle common type transformations
+
+        # ObjectId fields
+        if field_type == PydanticObjectId and isinstance(value, str):
+            return PydanticObjectId(value)
+
+        # DateTime fields
+        if field_type == datetime and isinstance(value, str):
+            return datetime.fromisoformat(value)
+
+        # Date fields
+        if field_type == date and isinstance(value, str):
+            return date.fromisoformat(value)
+
+        # Enum fields
+        if isinstance(field_type, type) and issubclass(field_type, Enum) and not isinstance(value, Enum):
+            try:
+                if isinstance(value, str) and hasattr(field_type, value):
+                    return getattr(field_type, value)
+                return field_type(value)
+            except (ValueError, KeyError, AttributeError):
+                # If conversion fails, return original value
+                return value
+
+        # Use Pydantic for complex type validation/conversion
+        try:
+            adapter = TypeAdapter(field_type)
+            return adapter.validate_python(value)
+        except PydanticValidationError:
+            # If Pydantic validation fails, return original value
+            # This allows MongoDB to handle the comparison as it sees fit
+            return value
 
     def _create_projection_model(self, projection_dict: Dict[str, int]) -> Optional[type[FindQueryProjectionType]]:
         """
@@ -326,7 +546,7 @@ class BeanieQueryEngine(Generic[TDocument]):
         )  # type: ignore[return-value]
         return projection
 
-    def execute_query(self, ast: FilterAST):
+    def execute_query(self, ast: FilterAST) -> BeanieQueryResult:
         """
         Execute query and return results.
 
@@ -334,8 +554,9 @@ class BeanieQueryEngine(Generic[TDocument]):
             ast: FilterAST to execute
 
         Returns:
-            Query results
+            Tuple containing query object, projection model, and sort specification
         """
+        # build_query already includes validation and transformation
         query, projection_model, sort_spec = self.build_query(ast)
         return query, projection_model, sort_spec
 

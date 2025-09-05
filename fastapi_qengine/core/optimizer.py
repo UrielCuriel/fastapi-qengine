@@ -50,48 +50,55 @@ class ASTOptimizer:
 
         return optimized_ast
 
-    def _optimize_node(self, node: ASTNode) -> ASTNode:
+    def _optimize_node(self, node: ASTNode) -> ASTNode | None:
         """Optimize a single AST node."""
         if isinstance(node, LogicalCondition):
-            optimized = self._optimize_logical_condition(node)
-            return optimized if optimized is not None else node
+            return self._optimize_logical_condition(node)
         elif isinstance(node, FieldCondition):
             return self._optimize_field_condition(node)
         else:
             return node
 
-    def _optimize_logical_condition(self, node: LogicalCondition) -> ASTNode | None:
+    def _optimize_logical_condition(self, condition: LogicalCondition) -> Optional[ASTNode]:
         """Optimize a logical condition node."""
-        # First, recursively optimize nested conditions
-        optimized_conditions = [self._optimize_node(condition) for condition in node.conditions]
+        # First, optimize all child conditions
+        optimized_conditions: List[ASTNode] = []
+        for child in condition.conditions:
+            optimized_child = self._optimize_node(child)
+            if optimized_child is not None:
+                optimized_conditions.append(optimized_child)
 
-        # Remove any null/empty conditions
-        optimized_conditions = [c for c in optimized_conditions if c is not None]
-
+        # If no children remain after optimization, return None
         if not optimized_conditions:
-            return None  # Empty logical condition
+            return None
 
+        # If only one child remains, return it directly (flattening)
         if len(optimized_conditions) == 1:
-            # Single condition in logical operator can be flattened
             return optimized_conditions[0]
 
-        # Apply various optimizations based on configuration
-        if self.config.simplify_logical_operators:
-            optimized_conditions = self._simplify_logical_operators(node.operator, optimized_conditions)
-
+        # Apply range condition optimization if enabled
         if self.config.combine_range_conditions:
             optimized_conditions = self._combine_range_conditions(optimized_conditions)
 
+        # Simplify nested logical operators of the same type
+        flattened_conditions: List[ASTNode] = []
+        for child in optimized_conditions:
+            if isinstance(child, LogicalCondition) and child.operator == condition.operator:
+                # Flatten nested AND/OR with same operator
+                flattened_conditions.extend(child.conditions)
+            else:
+                flattened_conditions.append(child)
+
+        # Remove redundant conditions if enabled
         if self.config.remove_redundant_conditions:
-            optimized_conditions = self._remove_redundant_conditions(optimized_conditions)
+            flattened_conditions = self._remove_redundant_conditions(flattened_conditions)
 
-        # Check if we still have multiple conditions
-        if len(optimized_conditions) == 1:
-            return optimized_conditions[0]
-        elif len(optimized_conditions) == 0:
-            return None
+        # If we've reduced to a single condition through flattening, return it
+        if len(flattened_conditions) == 1:
+            return flattened_conditions[0]
 
-        return LogicalCondition(operator=node.operator, conditions=optimized_conditions)
+        # Otherwise return the optimized logical condition
+        return LogicalCondition(operator=condition.operator, conditions=flattened_conditions)
 
     def _optimize_field_condition(self, node: FieldCondition) -> FieldCondition:
         """Optimize a field condition node."""
