@@ -49,10 +49,16 @@ class TestFilterSchemaGenerator:
         assert generator._get_openapi_type(str) == {"type": "string"}
         assert generator._get_openapi_type(int) == {"type": "integer"}
         assert generator._get_openapi_type(bool) == {"type": "boolean"}
-        assert generator._get_openapi_type(datetime) == {"type": "string", "format": "date-time"}
+        assert generator._get_openapi_type(datetime) == {
+            "type": "string",
+            "format": "date-time",
+        }
         assert generator._get_openapi_type(date) == {"type": "string", "format": "date"}
         assert generator._get_openapi_type(Decimal) == {"type": "number"}
-        assert generator._get_openapi_type(List[str]) == {"type": "array", "items": {"type": "string"}}
+        assert generator._get_openapi_type(List[str]) == {
+            "type": "array",
+            "items": {"type": "string"},
+        }
         assert generator._get_openapi_type(Optional[int]) == {"type": "integer"}
 
     def test_generate_field_schema(self):

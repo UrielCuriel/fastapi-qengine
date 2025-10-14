@@ -2,115 +2,90 @@
 Base compiler class and interfaces.
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Protocol
 
 from .errors import CompilerError
-from .types import ASTNode, FieldCondition, FieldsNode, FilterAST, LogicalCondition, OrderNode, QueryCompiler
+from .types import (
+    ASTNode,
+    FieldCondition,
+    FieldsNode,
+    LogicalCondition,
+    OrderNode,
+)
 
 
-class BaseQueryCompiler(QueryCompiler):
-    """Base class for all query compilers implementing Template Method pattern."""
+class QueryAdapter(Protocol):
+    """Protocol for different query adapter types."""
 
-    def __init__(self, backend_name: str):
-        self.backend_name = backend_name
+    def add_where_condition(self, condition: object) -> "QueryAdapter":
+        """Add a where condition to the query."""
+        ...
 
-    def compile(self, ast: FilterAST) -> Any:
-        """
-        Template method for compiling FilterAST to backend query.
+    def add_sort(self, field: str, ascending: bool = True) -> "QueryAdapter":
+        """Add sorting to the query."""
+        ...
 
-        Args:
-            ast: FilterAST to compile
+    def set_projection(self, fields: dict[str, int]) -> "QueryAdapter":
+        """Set field projection."""
+        ...
 
-        Returns:
-            Backend-specific query object
-        """
-        try:
-            query = self.create_base_query()
+    def build(self) -> object:
+        """Build the final query object."""
+        ...
 
-            if ast.where is not None:
-                query = self.apply_where(query, ast.where)
 
-            if ast.order:
-                query = self.apply_order(query, ast.order)
+class BaseQueryCompiler(Protocol):
+    """Protocol for query compilers implementing Template Method pattern."""
 
-            if ast.fields is not None:
-                query = self.apply_fields(query, ast.fields)
+    backend_name: str
 
-            return self.finalize_query(query)
-
-        except Exception as e:
-            raise CompilerError(f"Failed to compile AST: {e}", backend=self.backend_name)
-
-    @abstractmethod
-    def create_base_query(self) -> Any:
+    def create_base_query(self) -> QueryAdapter:
         """Create the base query object for this backend."""
-        pass
+        ...
 
-    @abstractmethod
-    def apply_where(self, query: Any, where_node: ASTNode) -> Any:
+    def apply_where(self, query: QueryAdapter, where_node: ASTNode) -> QueryAdapter:
         """Apply where conditions to the query."""
-        pass
+        ...
 
-    @abstractmethod
-    def apply_order(self, query: Any, order_nodes: List[OrderNode]) -> Any:
+    def apply_order(
+        self, query: QueryAdapter, order_nodes: list[OrderNode]
+    ) -> QueryAdapter:
         """Apply ordering to the query."""
-        pass
+        ...
 
-    @abstractmethod
-    def apply_fields(self, query: Any, fields_node: FieldsNode) -> Any:
+    def apply_fields(
+        self, query: QueryAdapter, fields_node: FieldsNode
+    ) -> QueryAdapter:
         """Apply field projection to the query."""
-        pass
+        ...
 
-    def finalize_query(self, query: Any) -> Any:
+    def compile_field_condition(self, condition: FieldCondition) -> object:
+        """Compile a field condition to backend-specific format."""
+        ...
+
+    def compile_logical_condition(self, condition: LogicalCondition) -> object:
+        """Compile a logical condition to backend-specific format."""
+        ...
+
+    def finalize_query(self, query: QueryAdapter) -> object:
         """Finalize the query before returning (default: return as-is)."""
-        return query
+        ...
 
     def supports_backend(self, backend_type: str) -> bool:
         """Check if this compiler supports the given backend."""
-        return backend_type == self.backend_name
+        ...
 
-    # Helper methods for common operations
-
-    def compile_condition(self, condition: ASTNode) -> Any:
+    def compile_condition(self, condition: ASTNode) -> object:
         """Compile a condition node to backend-specific format."""
-        if isinstance(condition, FieldCondition):
-            return self.compile_field_condition(condition)
-        elif isinstance(condition, LogicalCondition):
-            return self.compile_logical_condition(condition)
-        else:
-            raise CompilerError(f"Unknown condition type: {type(condition)}")
-
-    @abstractmethod
-    def compile_field_condition(self, condition: FieldCondition) -> Any:
-        """Compile a field condition to backend-specific format."""
-        pass
-
-    @abstractmethod
-    def compile_logical_condition(self, condition: LogicalCondition) -> Any:
-        """Compile a logical condition to backend-specific format."""
-        pass
+        ...
 
 
-class QueryAdapter(ABC):
-    """Adapter interface for different query object types."""
-
-    @abstractmethod
-    def add_where_condition(self, condition: Any) -> "QueryAdapter":
-        """Add a where condition to the query."""
-        pass
-
-    @abstractmethod
-    def add_sort(self, field: str, ascending: bool = True) -> "QueryAdapter":
-        """Add sorting to the query."""
-        pass
-
-    @abstractmethod
-    def set_projection(self, fields: Dict[str, int]) -> "QueryAdapter":
-        """Set field projection."""
-        pass
-
-    @abstractmethod
-    def build(self) -> Any:
-        """Build the final query object."""
-        pass
+# Helper function for compile_condition to be used by implementations
+def compile_condition_helper(compiler: BaseQueryCompiler, condition: ASTNode) -> object:
+    """Helper function to compile a condition node to backend-specific format."""
+    if isinstance(condition, FieldCondition):
+        return compiler.compile_field_condition(condition)
+    elif isinstance(condition, LogicalCondition):
+        return compiler.compile_logical_condition(condition)
+    else:
+        raise CompilerError(f"Unknown condition type: {type(condition)}")

@@ -129,7 +129,10 @@ def test_nested_params_order_format():
     assert order[0].ascending is False
 
     # Multiple fields as array elements in nested params
-    nested_params = {"filter[order][0]": "field1 ASC", "filter[order][1]": "field2 DESC"}
+    nested_params = {
+        "filter[order][0]": "field1 ASC",
+        "filter[order][1]": "field2 DESC",
+    }
     parser = FilterParser()
     normalized = FilterNormalizer().normalize(parser.parse(nested_params))
     ast = ASTBuilder().build(normalized)

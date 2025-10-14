@@ -9,8 +9,16 @@ from beanie import Document, init_beanie
 from fastapi import Depends, FastAPI
 from pymongo import AsyncMongoClient
 
-from fastapi_qengine import create_qe_dependency, create_response_model, process_filter_to_ast
-from fastapi_qengine.backends.beanie import BeanieQueryCompiler, BeanieQueryEngine, BeanieQueryResult
+from fastapi_qengine import (
+    create_qe_dependency,
+    create_response_model,
+    process_filter_to_ast,
+)
+from fastapi_qengine.backends.beanie import (
+    BeanieQueryCompiler,
+    BeanieQueryEngine,
+    BeanieQueryResult,
+)
 
 
 # Define Beanie models
@@ -42,13 +50,41 @@ async def lifespan(app: FastAPI):
     # Insert sample data if collection is empty
     if await Product.count() == 0:
         sample_products = [
-            Product(name="Laptop", category="electronics", price=999.99, in_stock=True, tags=["computer", "portable"]),
-            Product(name="Mouse", category="electronics", price=29.99, in_stock=True, tags=["computer", "accessory"]),
-            Product(name="Book", category="books", price=19.99, in_stock=False, tags=["education", "fiction"]),
             Product(
-                name="Smartphone", category="electronics", price=699.99, in_stock=True, tags=["mobile", "communication"]
+                name="Laptop",
+                category="electronics",
+                price=999.99,
+                in_stock=True,
+                tags=["computer", "portable"],
             ),
-            Product(name="Coffee Mug", category="home", price=12.99, in_stock=True, tags=["kitchen", "ceramic"]),
+            Product(
+                name="Mouse",
+                category="electronics",
+                price=29.99,
+                in_stock=True,
+                tags=["computer", "accessory"],
+            ),
+            Product(
+                name="Book",
+                category="books",
+                price=19.99,
+                in_stock=False,
+                tags=["education", "fiction"],
+            ),
+            Product(
+                name="Smartphone",
+                category="electronics",
+                price=699.99,
+                in_stock=True,
+                tags=["mobile", "communication"],
+            ),
+            Product(
+                name="Coffee Mug",
+                category="home",
+                price=12.99,
+                in_stock=True,
+                tags=["kitchen", "ceramic"],
+            ),
         ]
         await Product.insert_many(sample_products)
 
@@ -63,7 +99,9 @@ beanie_engine = BeanieQueryEngine(Product)
 qe_dep = create_qe_dependency(beanie_engine)
 
 
-@app.get("/products", response_model=List[ProductResponse], response_model_exclude_none=True)
+@app.get(
+    "/products", response_model=List[ProductResponse], response_model_exclude_none=True
+)
 async def get_products(query_result: BeanieQueryResult = Depends(qe_dep)):
     """
     Get products with optional filtering.

@@ -12,19 +12,23 @@ class QEngineError(Exception):
 class ParseError(QEngineError):
     """Raised when filter parsing fails."""
 
-    def __init__(self, message: str, source: str | None = None, position: int | None = None):
+    def __init__(
+        self, message: str, source: str | None = None, position: int | None = None
+    ):
         super().__init__(message)
-        self.source = source
-        self.position = position
+        self.source: str | None = source
+        self.position: int | None = position
 
 
 class ValidationError(QEngineError):
     """Raised when filter validation fails."""
 
-    def __init__(self, message: str, field: str | None = None, value=None):
+    def __init__(
+        self, message: str, field: str | None = None, value: object | None = None
+    ):
         super().__init__(message)
-        self.field = field
-        self.value = value
+        self.field: str | None = field
+        self.value: object | None = value
 
 
 class SecurityError(QEngineError):
@@ -32,7 +36,7 @@ class SecurityError(QEngineError):
 
     def __init__(self, message: str, policy_name: str | None = None):
         super().__init__(message)
-        self.policy_name = policy_name
+        self.policy_name: str | None = policy_name
 
 
 class CompilerError(QEngineError):
@@ -40,7 +44,7 @@ class CompilerError(QEngineError):
 
     def __init__(self, message: str, backend: str | None = None):
         super().__init__(message)
-        self.backend = backend
+        self.backend: str | None = backend
 
 
 class UnsupportedOperatorError(QEngineError):
@@ -51,8 +55,8 @@ class UnsupportedOperatorError(QEngineError):
         if backend:
             message += f" for backend '{backend}'"
         super().__init__(message)
-        self.operator = operator
-        self.backend = backend
+        self.operator: str = operator
+        self.backend: str | None = backend
 
 
 class RegistryError(QEngineError):

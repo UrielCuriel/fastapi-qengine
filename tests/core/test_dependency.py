@@ -144,7 +144,9 @@ class TestHandleProcessingError:
 class TestCreateQeDependency:
     @patch("fastapi_qengine.dependency._get_filter_input_from_request")
     @patch("fastapi_qengine.dependency._execute_query_on_engine")
-    def test_dependency_no_filter(self, mock_execute, mock_get_input, mock_request, mock_engine):
+    def test_dependency_no_filter(
+        self, mock_execute, mock_get_input, mock_request, mock_engine
+    ):
         mock_get_input.return_value = None
         mock_execute.return_value = {"empty": "result"}
 
@@ -160,7 +162,9 @@ class TestCreateQeDependency:
     @patch("fastapi_qengine.dependency._get_filter_input_from_request")
     @patch("fastapi_qengine.dependency.process_filter_to_ast")
     @patch("fastapi_qengine.dependency._execute_query_on_engine")
-    def test_dependency_with_filter(self, mock_execute, mock_process, mock_get_input, mock_request, mock_engine):
+    def test_dependency_with_filter(
+        self, mock_execute, mock_process, mock_get_input, mock_request, mock_engine
+    ):
         mock_get_input.return_value = {"field": "value"}
         mock_ast = FilterAST()
         mock_process.return_value = mock_ast
@@ -181,7 +185,9 @@ class TestCreateQeDependency:
 
     @patch("fastapi_qengine.dependency._get_filter_input_from_request")
     @patch("fastapi_qengine.dependency._handle_processing_error")
-    def test_dependency_error_handling(self, mock_handle_error, mock_get_input, mock_request, mock_engine):
+    def test_dependency_error_handling(
+        self, mock_handle_error, mock_get_input, mock_request, mock_engine
+    ):
         mock_get_input.side_effect = ValueError("Test error")
 
         # Create dependency and execute it

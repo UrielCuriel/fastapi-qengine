@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-qengine"
-version = "0.4.1"
+version = "0.5.0"
 description = "fastapi-qengine is an advanced query engine for FastAPI, inspired by Loopback 4's filtering system. It allows building complex queries directly from URLs with a flexible syntax."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -31,6 +31,7 @@ dev = [
     "pymongo>=4.0.0",         # MongoDB driver
     "pyrefly",
     "ruff",
+    "basedpyright>=1.31.7",
 ]
 
 test = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-cov>=4.0.0", "httpx"]

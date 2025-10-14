@@ -85,7 +85,9 @@ def test_backend_settings():
     """Test the backend-specific settings methods."""
     config = QEngineConfig()
     assert config.get_backend_setting("beanie", "some_key") is None
-    assert config.get_backend_setting("beanie", "some_key", "default_val") == "default_val"
+    assert (
+        config.get_backend_setting("beanie", "some_key", "default_val") == "default_val"
+    )
 
     config.set_backend_setting("beanie", "some_key", "some_value")
     assert config.get_backend_setting("beanie", "some_key") == "some_value"

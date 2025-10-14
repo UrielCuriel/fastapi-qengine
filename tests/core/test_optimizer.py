@@ -26,7 +26,11 @@ class TestASTOptimizer:
         config = OptimizerConfig(enabled=False)
         optimizer = ASTOptimizer(config)
 
-        ast = FilterAST(where=FieldCondition(field="name", operator=ComparisonOperator.EQ, value="test"))
+        ast = FilterAST(
+            where=FieldCondition(
+                field="name", operator=ComparisonOperator.EQ, value="test"
+            )
+        )
 
         result = optimizer.optimize(ast)
         assert result is ast  # Should return the same instance when disabled
@@ -43,7 +47,9 @@ class TestASTOptimizer:
 
     def test_optimize_node_field_condition(self):
         optimizer = ASTOptimizer()
-        field_condition = FieldCondition(field="price", operator=ComparisonOperator.GT, value=10)
+        field_condition = FieldCondition(
+            field="price", operator=ComparisonOperator.GT, value=10
+        )
 
         result = optimizer._optimize_node(field_condition)
         # Field conditions are currently returned as-is
@@ -51,18 +57,26 @@ class TestASTOptimizer:
 
     def test_optimize_logical_condition_empty(self):
         optimizer = ASTOptimizer()
-        logical_condition = LogicalCondition(operator=LogicalOperator.AND, conditions=[])
+        logical_condition = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=[]
+        )
 
         result = optimizer._optimize_node(logical_condition)
         assert result is None  # Empty logical conditions are removed
 
     def test_optimize_logical_condition_single_child(self):
         optimizer = ASTOptimizer()
-        field_condition = FieldCondition(field="price", operator=ComparisonOperator.GT, value=10)
-        logical_condition = LogicalCondition(operator=LogicalOperator.AND, conditions=[field_condition])
+        field_condition = FieldCondition(
+            field="price", operator=ComparisonOperator.GT, value=10
+        )
+        logical_condition = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=[field_condition]
+        )
 
         result = optimizer._optimize_node(logical_condition)
-        assert result == field_condition  # Logical condition with single child is flattened
+        assert (
+            result == field_condition
+        )  # Logical condition with single child is flattened
 
     def test_simplify_logical_operators(self):
         optimizer = ASTOptimizer()
@@ -78,7 +92,12 @@ class TestASTOptimizer:
 
         outer_condition = LogicalCondition(
             operator=LogicalOperator.AND,
-            conditions=[inner_and, FieldCondition(field="active", operator=ComparisonOperator.EQ, value=True)],
+            conditions=[
+                inner_and,
+                FieldCondition(
+                    field="active", operator=ComparisonOperator.EQ, value=True
+                ),
+            ],
         )
 
         result = optimizer._optimize_node(outer_condition)
@@ -93,11 +112,15 @@ class TestASTOptimizer:
         # Create conditions with a duplicate
         conditions: list[ASTNode] = [
             FieldCondition(field="price", operator=ComparisonOperator.GT, value=10),
-            FieldCondition(field="price", operator=ComparisonOperator.GT, value=10),  # Duplicate
+            FieldCondition(
+                field="price", operator=ComparisonOperator.GT, value=10
+            ),  # Duplicate
             FieldCondition(field="stock", operator=ComparisonOperator.GT, value=0),
         ]
 
-        logical_condition = LogicalCondition(operator=LogicalOperator.AND, conditions=conditions)
+        logical_condition = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=conditions
+        )
 
         result = optimizer._optimize_node(logical_condition)
 
@@ -163,18 +186,24 @@ class TestASTOptimizer:
             ],
         )
 
-        assert optimizer._nodes_equal(node1, node2) is True  # Should be equal despite order
+        assert (
+            optimizer._nodes_equal(node1, node2) is True
+        )  # Should be equal despite order
         assert optimizer._nodes_equal(node1, node3) is False  # Different operator
 
     def test_get_condition_key(self):
         optimizer = ASTOptimizer()
 
-        field_condition = FieldCondition(field="price", operator=ComparisonOperator.GT, value=10)
+        field_condition = FieldCondition(
+            field="price", operator=ComparisonOperator.GT, value=10
+        )
         key = optimizer._get_condition_key(field_condition)
         assert isinstance(key, str)
         assert "field:price:$gt:10" in key
 
-        logical_condition = LogicalCondition(operator=LogicalOperator.AND, conditions=[field_condition])
+        logical_condition = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=[field_condition]
+        )
         key = optimizer._get_condition_key(logical_condition)
         assert isinstance(key, str)
         assert "logical:$and" in key
@@ -185,10 +214,18 @@ class TestASTOptimizer:
         optimizer = ASTOptimizer(config)
 
         # Create a nested condition that requires multiple passes to fully optimize
-        condition1 = FieldCondition(field="price", operator=ComparisonOperator.GT, value=10)
-        inner_and = LogicalCondition(operator=LogicalOperator.AND, conditions=[condition1])
-        middle_and = LogicalCondition(operator=LogicalOperator.AND, conditions=[inner_and])
-        outer_and = LogicalCondition(operator=LogicalOperator.AND, conditions=[middle_and])
+        condition1 = FieldCondition(
+            field="price", operator=ComparisonOperator.GT, value=10
+        )
+        inner_and = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=[condition1]
+        )
+        middle_and = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=[inner_and]
+        )
+        outer_and = LogicalCondition(
+            operator=LogicalOperator.AND, conditions=[middle_and]
+        )
 
         ast = FilterAST(where=outer_and)
         result = optimizer.optimize(ast)

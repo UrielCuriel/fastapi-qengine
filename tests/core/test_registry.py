@@ -98,7 +98,9 @@ class TestOperatorRegistry:
 
     def test_is_registered_with_backend_all_backends(self, registry, sample_operator):
         """Test checking if operator is registered for all backends"""
-        registry.register_operator("$custom", sample_operator)  # No specific backends = all backends
+        registry.register_operator(
+            "$custom", sample_operator
+        )  # No specific backends = all backends
 
         assert registry.is_registered("$custom", "any_backend") is True
 
@@ -164,7 +166,9 @@ class TestOperatorRegistryIntegration:
 
         # Register them
         operator_registry.register_operator("$special", mongo_specific_op, ["mongodb"])
-        operator_registry.register_operator("$special_sql", sql_specific_op, ["sqlalchemy"])
+        operator_registry.register_operator(
+            "$special_sql", sql_specific_op, ["sqlalchemy"]
+        )
 
         # Check availability
         assert operator_registry.is_registered("$special", "mongodb") is True

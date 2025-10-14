@@ -41,7 +41,6 @@ from .types import (
     LogicalOperator,
     OrderNode,
     OrderSpec,
-    QueryCompiler,
     SecurityPolicy,
     ValidationRule,
 )
@@ -64,7 +63,6 @@ __all__ = [
     "FieldsNode",
     "FilterAST",
     "BackendQuery",
-    "QueryCompiler",
     "ValidationRule",
     "SecurityPolicy",
     # Errors

@@ -10,7 +10,7 @@ from importlib.metadata import version
 
 # Core imports
 # Backend-specific imports
-from .backends import BeanieQueryEngine, compile_to_mongodb
+from .backends import BeanieQueryEngine
 from .core import (
     FilterAST,
     FilterInput,
@@ -27,8 +27,6 @@ from .core import (
 # Main interface
 from .dependency import create_qe_dependency, process_filter_to_ast
 
-# Operator utilities
-from .operators import create_simple_operator, register_custom_operator
 
 __all__ = [
     # Main interface
@@ -49,10 +47,6 @@ __all__ = [
     "SecurityError",
     # Backend utilities
     "BeanieQueryEngine",
-    "compile_to_mongodb",
-    # Operator utilities
-    "register_custom_operator",
-    "create_simple_operator",
     # Response Model Factory
     "create_response_model",
 ]

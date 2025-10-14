@@ -56,12 +56,16 @@ class MockQueryCompiler(BaseQueryCompiler):
         condition = self.compile_condition(where_node)
         return query.add_where_condition(condition)
 
-    def apply_order(self, query: QueryAdapter, order_nodes: list[OrderNode]) -> QueryAdapter:
+    def apply_order(
+        self, query: QueryAdapter, order_nodes: list[OrderNode]
+    ) -> QueryAdapter:
         for node in order_nodes:
             query.add_sort(node.field, node.ascending)
         return query
 
-    def apply_fields(self, query: QueryAdapter, fields_node: FieldsNode) -> QueryAdapter:
+    def apply_fields(
+        self, query: QueryAdapter, fields_node: FieldsNode
+    ) -> QueryAdapter:
         return query.set_projection(fields_node.fields)
 
     def finalize_query(self, query: QueryAdapter):
@@ -72,7 +76,9 @@ class MockQueryCompiler(BaseQueryCompiler):
 
     def compile_logical_condition(self, condition: LogicalCondition) -> dict:
         return {
-            condition.operator.value: [self.compile_condition(c) for c in condition.conditions],
+            condition.operator.value: [
+                self.compile_condition(c) for c in condition.conditions
+            ],
         }
 
 
@@ -82,7 +88,9 @@ def test_base_compiler_compile():
         where=LogicalCondition(
             operator=LogicalOperator.AND,
             conditions=[
-                FieldCondition(field="name", operator=ComparisonOperator.EQ, value="test"),
+                FieldCondition(
+                    field="name", operator=ComparisonOperator.EQ, value="test"
+                ),
                 FieldCondition(field="age", operator=ComparisonOperator.GT, value=10),
             ],
         ),

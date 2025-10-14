@@ -6,7 +6,10 @@ import pytest
 
 from fastapi_qengine.core.types import ComparisonOperator, LogicalOperator
 from fastapi_qengine.operators.comparison import COMPARISON_OPERATORS
-from fastapi_qengine.operators.custom import create_simple_operator, register_custom_operator
+from fastapi_qengine.operators.custom import (
+    create_simple_operator,
+    register_custom_operator,
+)
 from fastapi_qengine.operators.logical import LOGICAL_OPERATORS
 
 

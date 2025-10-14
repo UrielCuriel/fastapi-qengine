@@ -63,7 +63,9 @@ class TestFilterValidator:
 
     def test_security_policy_allowed_operators(self):
         """Test security policy restricting operators."""
-        security_policy = SecurityPolicy(allowed_operators=[ComparisonOperator.EQ, ComparisonOperator.IN])
+        security_policy = SecurityPolicy(
+            allowed_operators=[ComparisonOperator.EQ, ComparisonOperator.IN]
+        )
         validator = FilterValidator(security_policy=security_policy)
         parser = FilterParser()
 
@@ -85,7 +87,12 @@ class TestFilterValidator:
         deep_query = {
             "where": {
                 "$and": [
-                    {"$or": [{"$and": [{"price": {"$gt": 10}}, {"category": "books"}]}, {"name": "test"}]},
+                    {
+                        "$or": [
+                            {"$and": [{"price": {"$gt": 10}}, {"category": "books"}]},
+                            {"name": "test"},
+                        ]
+                    },
                     {"in_stock": True},
                 ]
             }
@@ -105,7 +112,9 @@ class TestFilterValidator:
         parser = FilterParser()
 
         # Create query with array that exceeds max size
-        filter_input = parser.parse({"where": {"category": {"$in": ["a", "b", "c", "d", "e"]}}})
+        filter_input = parser.parse(
+            {"where": {"category": {"$in": ["a", "b", "c", "d", "e"]}}}
+        )
 
         with pytest.raises(SecurityError) as exc_info:
             validator.validate_filter_input(filter_input)

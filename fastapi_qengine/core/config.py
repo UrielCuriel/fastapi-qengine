@@ -3,7 +3,6 @@ Configuration settings for fastapi-qengine.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
 
 from .types import SecurityPolicy
 
@@ -25,7 +24,7 @@ class ValidatorConfig:
     validate_types: bool = True
     validate_operators: bool = True
     validate_field_names: bool = True
-    custom_validators: List[str] = field(default_factory=list)
+    custom_validators: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -68,13 +67,15 @@ class QEngineConfig:
     cache: CacheConfig = field(default_factory=CacheConfig)
 
     # Backend-specific settings
-    backend_settings: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    backend_settings: dict[str, dict[str, object]] = field(default_factory=dict)
 
-    def get_backend_setting(self, backend: str, key: str, default=None):
+    def get_backend_setting(
+        self, backend: str, key: str, default: object = None
+    ) -> object:
         """Get a backend-specific setting."""
         return self.backend_settings.get(backend, {}).get(key, default)
 
-    def set_backend_setting(self, backend: str, key: str, value: Any):
+    def set_backend_setting(self, backend: str, key: str, value: object) -> None:
         """Set a backend-specific setting."""
         if backend not in self.backend_settings:
             self.backend_settings[backend] = {}

@@ -3,20 +3,15 @@ Pytest configuration and fixtures for fastapi-qengine tests.
 """
 
 import asyncio
-from typing import Generator
+import uuid
+from collections.abc import AsyncGenerator, Mapping
 
 import pytest
-
-
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an instance of the default event loop for the test session."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+import pytest_asyncio
+from beanie import Document, init_beanie  # pyright: ignore[reportUnknownVariableType]
+from pymongo import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.errors import PyMongoError
 
 
 @pytest.fixture
@@ -25,7 +20,9 @@ def sample_filter_data():
     return {
         "simple_equality": {"where": {"category": "electronics"}},
         "comparison_operators": {"where": {"price": {"$gt": 50, "$lte": 100}}},
-        "logical_operators": {"where": {"$or": [{"category": "electronics"}, {"price": {"$lt": 20}}]}},
+        "logical_operators": {
+            "where": {"$or": [{"category": "electronics"}, {"price": {"$lt": 20}}]}
+        },
         "complex_query": {
             "where": {
                 "$and": [
@@ -44,9 +41,16 @@ def sample_filter_data():
 def sample_nested_params():
     """Sample nested parameter data for tests."""
     return {
-        "simple": {"filter[where][category]": "electronics", "filter[where][price][$gt]": "50"},
+        "simple": {
+            "filter[where][category]": "electronics",
+            "filter[where][price][$gt]": "50",
+        },
         "with_order": {"filter[where][in_stock]": "true", "filter[order]": "-price"},
-        "with_fields": {"filter[where][category]": "books", "filter[fields][name]": "1", "filter[fields][price]": "1"},
+        "with_fields": {
+            "filter[where][category]": "books",
+            "filter[fields][name]": "1",
+            "filter[fields][price]": "1",
+        },
     }
 
 
@@ -60,51 +64,65 @@ def sample_json_strings():
     }
 
 
-class MockBeanieDocument:
-    """Mock Beanie document for testing."""
-
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-    @classmethod
-    def find(cls, filter_dict=None):
-        """Mock find method."""
-        return MockBeanieQuery(filter_dict or {})
-
-    @classmethod
-    def find_all(cls):
-        """Mock find_all method."""
-        return MockBeanieQuery({})
+# ============================================================================
+# Beanie Integration Test Fixtures (Real MongoDB Connection)
+# ============================================================================
 
 
-class MockBeanieQuery:
-    """Mock Beanie query for testing."""
+@pytest_asyncio.fixture(scope="function")
+async def db_name() -> str:
+    """Genera un nombre de base de datos único para cada prueba.
 
-    def __init__(self, filter_dict):
-        self.filter_dict = filter_dict
-        self.sort_spec = []
-        self.projection_spec = {}
-
-    def sort(self, sort_spec):
-        """Mock sort method."""
-        self.sort_spec = sort_spec
-        return self
-
-    def project(self, **projection):
-        """Mock project method."""
-        self.projection_spec = projection
-        return self
-
-    def to_list(self):
-        """Mock to_list method."""
-        return [
-            MockBeanieDocument(name="Test Product", category="electronics", price=99.99),
-            MockBeanieDocument(name="Another Product", category="books", price=19.99),
-        ]
+    Returns:
+        str: Nombre de la base de datos temporal.
+    """
+    return f"test_qengine_db_{uuid.uuid4().hex}"
 
 
-@pytest.fixture
-def mock_beanie_model():
-    """Mock Beanie model for testing."""
-    return MockBeanieDocument
+@pytest_asyncio.fixture(scope="function")
+async def mongo_client(
+    db_name: str,
+) -> AsyncGenerator[AsyncMongoClient[Mapping[str, object]], None]:
+    """Crea un cliente Mongo local y espera disponibilidad con ping.
+
+    Args:
+        db_name: Nombre de la base de datos temporal.
+
+    Yields:
+        AsyncMongoClient: Cliente listo.
+    """
+    uri = "mongodb://localhost:27017"
+    client = AsyncMongoClient[Mapping[str, object]](uri, appname="pytest-qengine")
+    for attempt in range(10):
+        try:
+            _ = await client.admin.command({"ping": 1})
+            break
+        except PyMongoError:
+            if attempt == 9:
+                raise
+            await asyncio.sleep(0.5 * (attempt + 1))
+    yield client
+    await client.drop_database(db_name)
+    await client.close()
+
+
+@pytest_asyncio.fixture(autouse=False, scope="function")
+async def db_init(
+    db_name: str, mongo_client: AsyncMongoClient[Mapping[str, object]]
+) -> AsyncGenerator[None, None]:
+    """Inicializa Beanie con los modelos de prueba.
+
+    Args:
+        db_name: Nombre de la base de datos temporal.
+        mongo_client: Cliente de MongoDB.
+
+    Yields:
+        None
+    """
+    # Import test models here to avoid circular imports
+    from tests.backends.test_beanie_security import SecureProduct, UserWithAddress
+
+    modelos: list[type[Document]] = [SecureProduct, UserWithAddress]
+    test_db: AsyncDatabase[Mapping[str, object]] = mongo_client.get_database(db_name)
+    await init_beanie(database=test_db, document_models=modelos)
+    yield

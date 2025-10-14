@@ -4,7 +4,8 @@ OpenAPI schema generation for query filters.
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, Type, Union, get_type_hints
+from typing import cast, get_type_hints
+from pydantic import BaseModel
 
 
 class FilterSchemaGenerator:
@@ -12,7 +13,7 @@ class FilterSchemaGenerator:
     Generates OpenAPI schemas for filter parameters based on model classes.
     """
 
-    TYPE_MAPPING = {
+    TYPE_MAPPING: dict[object, object] = {
         str: {"type": "string"},
         int: {"type": "integer"},
         float: {"type": "number"},
@@ -22,7 +23,7 @@ class FilterSchemaGenerator:
         Decimal: {"type": "number"},
     }
 
-    OPERATORS = {
+    OPERATORS: dict[str, str] = {
         "$eq": "Equal to",
         "$ne": "Not equal to",
         "$gt": "Greater than",
@@ -38,22 +39,20 @@ class FilterSchemaGenerator:
         "$not": "Logical NOT",
     }
 
-    def __init__(self, model_class: Type):
-        self.model_class = model_class
-        self.model_fields = self._get_model_fields()
+    def __init__(self, model_class: type[BaseModel]):
+        self.model_class: type[BaseModel] = model_class
+        self.model_fields: dict[str, dict[str, object]] = self._get_model_fields()
 
-    def _get_model_fields(self) -> Dict[str, Dict[str, Any]]:
+    def _get_model_fields(self) -> dict[str, dict[str, object]]:
         """Extract field information from model."""
         if hasattr(self.model_class, "model_fields"):
             return self._extract_pydantic_v2_fields()
-        elif hasattr(self.model_class, "__fields__"):
-            return self._extract_pydantic_v1_fields()
         else:
             return self._extract_fallback_fields()
 
-    def _extract_pydantic_v2_fields(self) -> Dict[str, Dict[str, Any]]:
+    def _extract_pydantic_v2_fields(self) -> dict[str, dict[str, object]]:
         """Extract fields from Pydantic v2 model."""
-        fields = {}
+        fields: dict[str, dict[str, object]] = {}
         for field_name, field_info in self.model_class.model_fields.items():
             fields[field_name] = {
                 "type": field_info.annotation,
@@ -62,55 +61,52 @@ class FilterSchemaGenerator:
             }
         return fields
 
-    def _extract_pydantic_v1_fields(self) -> Dict[str, Dict[str, Any]]:
-        """Extract fields from Pydantic v1 model."""
-        fields = {}
-        for field_name, field_info in self.model_class.__fields__.items():
-            desc = None
-            if field_info.field_info:
-                desc = getattr(field_info.field_info, "description", None)
-            fields[field_name] = {"type": field_info.type_, "required": field_info.required, "description": desc}
-        return fields
-
-    def _extract_fallback_fields(self) -> Dict[str, Dict[str, Any]]:
+    def _extract_fallback_fields(self) -> dict[str, dict[str, object]]:
         """Extract fields using type hints or basic fallback."""
         try:
-            type_hints = get_type_hints(self.model_class)
-            fields = {}
+            type_hints = cast(dict[str, object], get_type_hints(self.model_class))
+            fields: dict[str, dict[str, object]] = {}
             for field_name, field_type in type_hints.items():
                 if not field_name.startswith("_"):
-                    fields[field_name] = {"type": field_type, "required": True, "description": None}
+                    fields[field_name] = {
+                        "type": field_type,
+                        "required": True,
+                        "description": None,
+                    }
             return fields
         except (NameError, AttributeError):
             return self._get_basic_fallback_fields()
 
-    def _get_basic_fallback_fields(self) -> Dict[str, Dict[str, Any]]:
+    def _get_basic_fallback_fields(self) -> dict[str, dict[str, object]]:
         """Return basic fallback fields when all else fails."""
         return {
             "id": {"type": str, "required": False, "description": "ID"},
             "name": {"type": str, "required": False, "description": "Name"},
-            "created_at": {"type": datetime, "required": False, "description": "Created at"},
+            "created_at": {
+                "type": datetime,
+                "required": False,
+                "description": "Created at",
+            },
         }
 
-    def _get_openapi_type(self, python_type: Type) -> Dict[str, Any]:
+    def _get_openapi_type(self, python_type: type) -> dict[str, object]:
         """Convert Python type to OpenAPI type."""
-        # Handle Optional types
-        if hasattr(python_type, "__origin__") and python_type.__origin__ is Union:
-            args = python_type.__args__
-            if len(args) == 2 and type(None) in args:
-                non_none_type = args[0] if args[1] is type(None) else args[1]
-                return self._get_openapi_type(non_none_type)
-
         # Handle List types
-        if hasattr(python_type, "__origin__") and python_type.__origin__ is list:
-            item_type = python_type.__args__[0] if python_type.__args__ else str
-            return {"type": "array", "items": self._get_openapi_type(item_type)}
+        if hasattr(python_type, "__origin__") and hasattr(python_type, "__args__"):
+            origin = getattr(python_type, "__origin__", None)
+            if origin is list:
+                args = getattr(python_type, "__args__", ())
+                item_type: type = args[0] if args else str
+                return {"type": "array", "items": self._get_openapi_type(item_type)}
 
-        return self.TYPE_MAPPING.get(python_type, {"type": "string"})
+        result = self.TYPE_MAPPING.get(python_type, {"type": "string"})
+        return cast(dict[str, object], result)
 
-    def generate_field_schema(self, field_name: str, field_info: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_field_schema(
+        self, field_name: str, field_info: dict[str, object]
+    ) -> dict[str, object]:
         """Generate schema for a field."""
-        field_type = self._get_openapi_type(field_info["type"])
+        field_type = self._get_openapi_type(cast(type, field_info["type"]))
 
         # Determine applicable operators
         if field_type["type"] == "string":
@@ -138,30 +134,32 @@ class FilterSchemaGenerator:
             ]
         }
 
-    def generate_filter_schema(self) -> Dict[str, Any]:
+    def generate_filter_schema(self) -> dict[str, object]:
         """Generate complete filter schema."""
-        properties = {}
+        properties: dict[str, object] = {}
 
         # Add field schemas
         for field_name, field_info in self.model_fields.items():
             properties[field_name] = self.generate_field_schema(field_name, field_info)
 
         # Add logical operators
-        properties.update(
-            {
-                "$and": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Logical AND - all conditions must be true",
-                },
-                "$or": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Logical OR - at least one condition must be true",
-                },
-                "$not": {"type": "object", "description": "Logical NOT - condition must be false"},
-            }
-        )
+        logical_operators: dict[str, object] = {
+            "$and": {
+                "type": "array",
+                "items": {"type": "object"},
+                "description": "Logical AND - all conditions must be true",
+            },
+            "$or": {
+                "type": "array",
+                "items": {"type": "object"},
+                "description": "Logical OR - at least one condition must be true",
+            },
+            "$not": {
+                "type": "object",
+                "description": "Logical NOT - condition must be false",
+            },
+        }
+        properties.update(logical_operators)
 
         return {
             "type": "object",
@@ -182,13 +180,15 @@ class FilterSchemaGenerator:
                     "type": "object",
                     "description": "Field selection",
                     "additionalProperties": {"type": "boolean"},
-                    "example": {list(self.model_fields.keys())[0]: True} if self.model_fields else {},
+                    "example": {list(self.model_fields.keys())[0]: True}
+                    if self.model_fields
+                    else {},
                 },
             },
             "additionalProperties": False,
         }
 
-    def generate_examples(self) -> Dict[str, Any]:
+    def generate_examples(self) -> dict[str, object]:
         """Generate example queries."""
         if not self.model_fields:
             return {}
@@ -196,7 +196,7 @@ class FilterSchemaGenerator:
         field_names = list(self.model_fields.keys())
         first_field = field_names[0]
 
-        examples = {
+        examples: dict[str, object] = {
             "simple": {
                 "summary": "Simple equality",
                 "description": "Filter by field value",
@@ -233,7 +233,7 @@ class FilterSchemaGenerator:
         return examples
 
 
-def generate_filter_docs(model_class: Type) -> Dict[str, Any]:
+def generate_filter_docs(model_class: type) -> dict[str, object]:
     """
     Generate comprehensive OpenAPI documentation for filters.
 
@@ -241,7 +241,7 @@ def generate_filter_docs(model_class: Type) -> Dict[str, Any]:
         model_class: Model class to document
 
     Returns:
-        Dictionary with schemas and examples for OpenAPI spec
+        dictionary with schemas and examples for OpenAPI spec
     """
     generator = FilterSchemaGenerator(model_class)
     schema = generator.generate_filter_schema()
@@ -269,7 +269,7 @@ def generate_filter_docs(model_class: Type) -> Dict[str, Any]:
     }
 
 
-def add_filter_docs_to_endpoint(model_class: Type):
+def add_filter_docs_to_endpoint(model_class: type):
     """
     Decorator to add filter documentation to FastAPI endpoint.
 
@@ -279,16 +279,19 @@ def add_filter_docs_to_endpoint(model_class: Type):
         def get_products(filter_query: dict = Depends(query_engine)):
             ...
     """
+    from typing import Callable, TypeVar
 
-    def decorator(func):
+    F = TypeVar("F", bound=Callable[..., object])
+
+    def decorator(func: F) -> F:
         # Add to function metadata for FastAPI to pick up
         if not hasattr(func, "__annotations__"):
-            func.__annotations__ = {}
+            setattr(func, "__annotations__", {})
 
         docs = generate_filter_docs(model_class)
 
         # Store docs in function for potential use by FastAPI
-        func._filter_docs = docs
+        setattr(func, "_filter_docs", docs)
 
         return func
 

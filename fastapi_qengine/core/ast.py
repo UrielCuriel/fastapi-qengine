@@ -2,8 +2,7 @@
 AST Builder for converting normalized filter inputs to typed AST nodes.
 """
 
-from typing import Any, Dict, List, Union
-
+from typing import cast
 from .errors import ParseError
 from .types import (
     ASTNode,
@@ -49,17 +48,14 @@ class ASTBuilder:
 
         return FilterAST(where=where_node, order=order_nodes, fields=fields_node)
 
-    def _build_where_node(self, where: Dict[str, Any]) -> ASTNode:
+    def _build_where_node(self, where: dict[str, object]) -> ASTNode:
         """Build where clause AST node."""
-        if not isinstance(where, dict):
-            raise ParseError("Where clause must be a dictionary")
-
         return self._build_condition_node(where)
 
-    def _build_condition_node(self, condition: Dict[str, Any]) -> ASTNode:
+    def _build_condition_node(self, condition: dict[str, object]) -> ASTNode:
         """Build a condition node (field condition or logical condition)."""
-        logical_operators = []
-        field_conditions = []
+        logical_operators: list[ASTNode] = []
+        field_conditions: list[ASTNode] = []
 
         for key, value in condition.items():
             if key.startswith("$") and key in ["$and", "$or", "$nor"]:
@@ -68,63 +64,99 @@ class ASTBuilder:
                 if not isinstance(value, list):
                     raise ParseError(f"Logical operator '{key}' requires a list value")
 
-                nested_conditions = [self._build_condition_node(item) for item in value]
-                logical_operators.append(LogicalCondition(operator=logical_op, conditions=nested_conditions))
+                nested_conditions = [
+                    self._build_condition_node(cast(dict[str, object], item))
+                    for item in cast(list[object], value)
+                ]
+                logical_operators.append(
+                    LogicalCondition(operator=logical_op, conditions=nested_conditions)
+                )
             else:
                 # Field condition
                 field_conditions.append(self._build_field_condition(key, value))
 
         # Combine all conditions
-        all_conditions = logical_operators + field_conditions
+        all_conditions: list[ASTNode] = logical_operators + field_conditions
 
         if len(all_conditions) == 1:
             return all_conditions[0]
         elif len(all_conditions) > 1:
             # Multiple conditions at same level - combine with AND
-            return LogicalCondition(operator=LogicalOperator.AND, conditions=all_conditions)
+            return LogicalCondition(
+                operator=LogicalOperator.AND, conditions=all_conditions
+            )
         else:
             raise ParseError("Empty condition")
 
-    def _build_field_condition(self, field: str, condition: Any) -> ASTNode:
+    def _build_field_condition(self, field: str, condition: object) -> ASTNode:
         """Build a field condition node."""
         if field.startswith("$"):
             raise ParseError(f"Invalid field name '{field}' - cannot start with '$'")
 
         if isinstance(condition, dict):
-            return self._build_complex_field_condition(field, condition)
+            return self._build_complex_field_condition(
+                field, cast(dict[str, object], condition)
+            )
         else:
             return self._build_simple_field_condition(field, condition)
 
-    def _build_complex_field_condition(self, field: str, condition: Dict[str, Any]) -> ASTNode:
+    def _build_complex_field_condition(
+        self, field: str, condition: dict[str, object]
+    ) -> ASTNode:
         """Build a complex field condition with operators."""
         if len(condition) == 1:
             return self._build_single_operator_condition(field, condition)
         else:
             return self._build_multiple_operator_condition(field, condition)
 
-    def _build_single_operator_condition(self, field: str, condition: Dict[str, Any]) -> FieldCondition:
+    def _build_single_operator_condition(
+        self, field: str, condition: dict[str, object]
+    ) -> FieldCondition:
         """Build a field condition with a single operator."""
+        from typing import cast
+        from .types import FilterValue
+
         op_key, op_value = next(iter(condition.items()))
         self._validate_operator(op_key)
         operator = self._get_comparison_operator(op_key)
-        return FieldCondition(field=field, operator=operator, value=op_value)
+        return FieldCondition(
+            field=field, operator=operator, value=cast(FilterValue, op_value)
+        )
 
-    def _build_multiple_operator_condition(self, field: str, condition: Dict[str, Any]) -> ASTNode:
+    def _build_multiple_operator_condition(
+        self, field: str, condition: dict[str, object]
+    ) -> ASTNode:
         """Build a field condition with multiple operators combined with AND."""
-        conditions = []
+        from typing import cast
+        from .types import FilterValue
+
+        conditions: list[ASTNode] = []
         for op_key, op_value in condition.items():
             self._validate_operator(op_key)
             operator = self._get_comparison_operator(op_key)
-            conditions.append(FieldCondition(field=field, operator=operator, value=op_value))
+            conditions.append(
+                FieldCondition(
+                    field=field, operator=operator, value=cast(FilterValue, op_value)
+                )
+            )
 
         if len(conditions) == 1:
             return conditions[0]
         else:
             return LogicalCondition(operator=LogicalOperator.AND, conditions=conditions)
 
-    def _build_simple_field_condition(self, field: str, condition: Any) -> FieldCondition:
+    def _build_simple_field_condition(
+        self, field: str, condition: object
+    ) -> FieldCondition:
         """Build a simple equality field condition."""
-        return FieldCondition(field=field, operator=ComparisonOperator.EQ, value=condition)
+        from typing import cast
+        from .types import FilterValue
+
+        return FieldCondition(
+            field=field,
+            operator=ComparisonOperator.EQ,
+            value=cast(FilterValue, condition),
+        )
 
     def _validate_operator(self, op_key: str) -> None:
         """Validate that an operator key is valid."""
@@ -138,7 +170,7 @@ class ASTBuilder:
         except ValueError:
             raise ParseError(f"Unknown operator '{op_key}'")
 
-    def _build_order_nodes(self, order: Union[str, List[str]]) -> List[OrderNode]:
+    def _build_order_nodes(self, order: str | list[str]) -> list[OrderNode]:
         """
         Build order nodes from order specification.
 
@@ -148,28 +180,24 @@ class ASTBuilder:
         - Fields with "-" prefix for descending: "-field1", "field2"
         - Fields with explicit ASC/DESC: "field1 ASC", "field2 DESC"
         """
-        order_nodes = []
+        order_nodes: list[OrderNode] = []
 
         # Handle string format
         if isinstance(order, str):
             # Split by comma for multiple fields
             fields_to_process = order.split(",")
         # Handle list format
-        elif isinstance(order, list):
-            fields_to_process = order
         else:
-            raise ParseError(f"Order must be a string or list of strings, got {type(order)}")
+            fields_to_process = order
 
         for field_spec in fields_to_process:
-            if not isinstance(field_spec, str):
-                raise ParseError(f"Order specification must be a string, got {type(field_spec)}")
-
             field_spec = field_spec.strip()
             if not field_spec:
                 continue
 
             # Check for explicit ASC/DESC format (e.g., "field ASC" or "field DESC")
             ascending = True
+            field = field_spec
             if " " in field_spec:
                 parts = field_spec.rsplit(" ", 1)
                 if len(parts) == 2:
@@ -186,7 +214,6 @@ class ASTBuilder:
                         field = field_spec
             else:
                 # Check for descending order with - prefix (legacy format)
-                field = field_spec
                 if field.startswith("-"):
                     ascending = False
                     field = field[1:]
@@ -198,15 +225,14 @@ class ASTBuilder:
 
         return order_nodes
 
-    def _build_fields_node(self, fields: Dict[str, int]) -> FieldsNode:
+    def _build_fields_node(self, fields: dict[str, int]) -> FieldsNode:
         """Build fields node from fields specification."""
-        if not isinstance(fields, dict):
-            raise ParseError("Fields must be a dictionary")
-
         # Validate field values are 0 or 1
         for field, include in fields.items():
             if include not in [0, 1]:
-                raise ParseError(f"Field '{field}' inclusion value must be 0 or 1, got {include}")
+                raise ParseError(
+                    f"Field '{field}' inclusion value must be 0 or 1, got {include}"
+                )
 
         return FieldsNode(fields=fields)
 
@@ -216,3 +242,6 @@ class ASTBuilder:
             # Single item in logical condition can be flattened
             return self._flatten_single_item_logical(node.conditions[0])
         return node
+
+
+__all__ = ["ASTBuilder", "FieldCondition", "LogicalCondition"]

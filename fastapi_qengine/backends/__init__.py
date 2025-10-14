@@ -1,9 +1,8 @@
 """Backends module initialization."""
 
-from .beanie import BeanieQueryCompiler, BeanieQueryEngine, compile_to_mongodb
+from .beanie import BeanieQueryCompiler, BeanieQueryEngine
 
 __all__ = [
-    'BeanieQueryCompiler',
-    'BeanieQueryEngine', 
-    'compile_to_mongodb',
+    "BeanieQueryCompiler",
+    "BeanieQueryEngine",
 ]

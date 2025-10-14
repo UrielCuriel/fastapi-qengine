@@ -2,13 +2,12 @@
 Integration test for Beanie backend with validation and transformation.
 """
 
+from collections.abc import AsyncGenerator, Mapping
 from datetime import date, datetime
 from enum import Enum
-from typing import AsyncGenerator, List, Optional
-
 import pytest
 import pytest_asyncio
-from beanie import Document, init_beanie
+from beanie import Document, init_beanie  # pyright: ignore[reportUnknownVariableType]
 from beanie.odm.fields import PydanticObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
@@ -37,8 +36,8 @@ class AdvancedProduct(Document):
     created_at: datetime
     release_date: date
     in_stock: bool
-    stock_count: Optional[int] = None
-    tags: List[str] = []
+    stock_count: int | None = None
+    tags: list[str] = []
 
 
 # genera un nombre de base de datos de prueba único para cada ejecución de prueba
@@ -51,10 +50,12 @@ async def db_name() -> str:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def mongo_client(db_name: str) -> AsyncGenerator[AsyncMongoClient, None]:
+async def mongo_client(
+    db_name: str,
+) -> AsyncGenerator[AsyncMongoClient[Mapping[str, object]], None]:
     """MongoDB client fixture."""
     uri = "mongodb://localhost:27017"
-    mongo_client = AsyncMongoClient(uri)
+    mongo_client = AsyncMongoClient[Mapping[str, object]](uri)
     # Wait for container to be ready
     import asyncio as _asyncio
 
@@ -62,23 +63,24 @@ async def mongo_client(db_name: str) -> AsyncGenerator[AsyncMongoClient, None]:
 
     for attempt in range(10):
         try:
-            await mongo_client.admin.command({"ping": 1})
+            _ = await mongo_client.admin.command({"ping": 1})
             break
         except PyMongoError:
             if attempt == 9:
                 raise
             await _asyncio.sleep(0.5 * (attempt + 1))
     yield mongo_client
-    if mongo_client is not None:
-        # delete test database
-        await mongo_client.drop_database(db_name)
-        await mongo_client.close()
+    # delete test database
+    await mongo_client.drop_database(db_name)
+    await mongo_client.close()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def db_init(mongo_client: AsyncMongoClient, db_name: str) -> AsyncGenerator[None, None]:
+async def db_init(
+    mongo_client: AsyncMongoClient[Mapping[str, object]], db_name: str
+) -> AsyncGenerator[None, None]:
     """Initialize database with sample data."""
-    test_db: AsyncDatabase = mongo_client.get_database(db_name)
+    test_db: AsyncDatabase[Mapping[str, object]] = mongo_client.get_database(db_name)
     await init_beanie(database=test_db, document_models=[AdvancedProduct])
 
     # Create sample products
@@ -129,25 +131,31 @@ async def db_init(mongo_client: AsyncMongoClient, db_name: str) -> AsyncGenerato
         ),
     ]
 
-    await AdvancedProduct.insert_many(sample_products)
+    _ = await AdvancedProduct.insert_many(sample_products)
     yield
     for collection_name in await test_db.list_collection_names():
-        await test_db[collection_name].delete_many({})
+        _ = await test_db[collection_name].delete_many({})
 
 
 @pytest_asyncio.fixture
-async def engine() -> BeanieQueryEngine:
+async def engine() -> BeanieQueryEngine[Document]:
     """BeanieQueryEngine instance."""
     return BeanieQueryEngine(model_class=AdvancedProduct)
 
 
 @pytest.mark.asyncio
-async def test_query_with_date_transformation(engine, db_init):
+async def test_query_with_date_transformation(
+    engine: BeanieQueryEngine[AdvancedProduct],
+):
     """Test querying with date transformations."""
     # Query products released after a specific date
-    filter_input = {"where": {"release_date": {"$gte": "2022-06-01"}}}
+    filter_input: dict[str, object] = {
+        "where": {"release_date": {"$gte": "2022-06-01"}}
+    }
 
-    ast = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
+    ast = ASTBuilder().build(
+        FilterNormalizer().normalize(FilterParser().parse(filter_input))
+    )
     query, _, _ = engine.build_query(ast)
     results = await query.to_list()
 
@@ -159,12 +167,16 @@ async def test_query_with_date_transformation(engine, db_init):
 
 
 @pytest.mark.asyncio
-async def test_query_with_enum_transformation(engine, db_init):
+async def test_query_with_enum_transformation(
+    engine: BeanieQueryEngine[AdvancedProduct],
+):
     """Test querying with enum transformations."""
     # Query products with AVAILABLE status
-    filter_input = {"where": {"status": "available"}}
+    filter_input: dict[str, object] = {"where": {"status": "available"}}
 
-    ast = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
+    ast = ASTBuilder().build(
+        FilterNormalizer().normalize(FilterParser().parse(filter_input))
+    )
     query, _, _ = engine.build_query(ast)
     results = await query.to_list()
 
@@ -175,12 +187,18 @@ async def test_query_with_enum_transformation(engine, db_init):
 
 
 @pytest.mark.asyncio
-async def test_query_with_list_transformation(engine, db_init):
+async def test_query_with_list_transformation(
+    engine: BeanieQueryEngine[AdvancedProduct],
+):
     """Test querying with list transformations."""
     # Query products with specific tags
-    filter_input = {"where": {"tags": {"$in": ["gaming", "vintage"]}}}
+    filter_input: dict[str, object] = {
+        "where": {"tags": {"$in": ["gaming", "vintage"]}}
+    }
 
-    ast = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
+    ast = ASTBuilder().build(
+        FilterNormalizer().normalize(FilterParser().parse(filter_input))
+    )
     query, _, _ = engine.build_query(ast)
     results = await query.to_list()
 
@@ -192,14 +210,22 @@ async def test_query_with_list_transformation(engine, db_init):
 
 
 @pytest.mark.asyncio
-async def test_query_with_multiple_transformations(engine, db_init):
+async def test_query_with_multiple_transformations(
+    engine: BeanieQueryEngine[AdvancedProduct],
+):
     """Test querying with multiple field transformations."""
     # Complex query with multiple fields and transformations
-    filter_input = {
-        "where": {"price": {"$lt": 100}, "status": "available", "created_at": {"$gte": "2023-03-01T00:00:00"}}
+    filter_input: dict[str, object] = {
+        "where": {
+            "price": {"$lt": 100},
+            "status": "available",
+            "created_at": {"$gte": "2023-03-01T00:00:00"},
+        }
     }
 
-    ast = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
+    ast = ASTBuilder().build(
+        FilterNormalizer().normalize(FilterParser().parse(filter_input))
+    )
     query, _, _ = engine.build_query(ast)
     results = await query.to_list()
 
@@ -209,13 +235,18 @@ async def test_query_with_multiple_transformations(engine, db_init):
 
 
 @pytest.mark.asyncio
-async def test_query_with_invalid_field_skipping(engine, db_init):
+async def test_query_with_invalid_field_skipping(engine: BeanieQueryEngine[Document]):
     """Test that invalid fields in projection are skipped."""
     # Query with valid and invalid projection fields
-    filter_input = {"where": {"price": {"$lt": 100}}, "fields": {"name": 1, "price": 1, "non_existent_field": 1}}
+    filter_input: dict[str, object] = {
+        "where": {"price": {"$lt": 100}},
+        "fields": {"name": 1, "price": 1, "non_existent_field": 1},
+    }
 
-    ast = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
-    query, projection_model, _ = engine.build_query(ast)
+    ast = ASTBuilder().build(
+        FilterNormalizer().normalize(FilterParser().parse(filter_input))
+    )
+    query, _projection_model, _ = engine.build_query(ast)
     results = await query.to_list()
 
     # Should return products under $100 with only name and price fields

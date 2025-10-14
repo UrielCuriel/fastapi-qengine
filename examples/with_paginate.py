@@ -23,7 +23,11 @@ from fastapi_pagination import Page, add_pagination
 from fastapi_pagination.ext.beanie import apaginate
 from pymongo import AsyncMongoClient
 
-from fastapi_qengine import create_qe_dependency, create_response_model, process_filter_to_ast
+from fastapi_qengine import (
+    create_qe_dependency,
+    create_response_model,
+    process_filter_to_ast,
+)
 from fastapi_qengine.backends.beanie import BeanieQueryEngine, BeanieQueryResult
 
 
@@ -62,22 +66,90 @@ async def lifespan(app: FastAPI):
     # Insert sample data if collection is empty
     if await Product.count() == 0:
         sample_products = [
-            Product(name="Laptop", category="electronics", price=999.99, in_stock=True, tags=["computer", "portable"]),
-            Product(name="Mouse", category="electronics", price=29.99, in_stock=True, tags=["computer", "accessory"]),
-            Product(name="Book", category="books", price=19.99, in_stock=False, tags=["education", "fiction"]),
             Product(
-                name="Smartphone", category="electronics", price=699.99, in_stock=True, tags=["mobile", "communication"]
+                name="Laptop",
+                category="electronics",
+                price=999.99,
+                in_stock=True,
+                tags=["computer", "portable"],
             ),
-            Product(name="Coffee Mug", category="home", price=12.99, in_stock=True, tags=["kitchen", "ceramic"]),
-            Product(name="Tablet", category="electronics", price=499.99, in_stock=True, tags=["computer", "portable"]),
-            Product(name="Headphones", category="electronics", price=149.99, in_stock=True, tags=["audio", "wireless"]),
             Product(
-                name="Keyboard", category="electronics", price=89.99, in_stock=False, tags=["computer", "accessory"]
+                name="Mouse",
+                category="electronics",
+                price=29.99,
+                in_stock=True,
+                tags=["computer", "accessory"],
             ),
-            Product(name="Monitor", category="electronics", price=299.99, in_stock=True, tags=["computer", "display"]),
-            Product(name="Chair", category="furniture", price=199.99, in_stock=True, tags=["office", "ergonomic"]),
-            Product(name="Desk", category="furniture", price=349.99, in_stock=False, tags=["office", "wooden"]),
-            Product(name="Lamp", category="home", price=59.99, in_stock=True, tags=["lighting", "LED"]),
+            Product(
+                name="Book",
+                category="books",
+                price=19.99,
+                in_stock=False,
+                tags=["education", "fiction"],
+            ),
+            Product(
+                name="Smartphone",
+                category="electronics",
+                price=699.99,
+                in_stock=True,
+                tags=["mobile", "communication"],
+            ),
+            Product(
+                name="Coffee Mug",
+                category="home",
+                price=12.99,
+                in_stock=True,
+                tags=["kitchen", "ceramic"],
+            ),
+            Product(
+                name="Tablet",
+                category="electronics",
+                price=499.99,
+                in_stock=True,
+                tags=["computer", "portable"],
+            ),
+            Product(
+                name="Headphones",
+                category="electronics",
+                price=149.99,
+                in_stock=True,
+                tags=["audio", "wireless"],
+            ),
+            Product(
+                name="Keyboard",
+                category="electronics",
+                price=89.99,
+                in_stock=False,
+                tags=["computer", "accessory"],
+            ),
+            Product(
+                name="Monitor",
+                category="electronics",
+                price=299.99,
+                in_stock=True,
+                tags=["computer", "display"],
+            ),
+            Product(
+                name="Chair",
+                category="furniture",
+                price=199.99,
+                in_stock=True,
+                tags=["office", "ergonomic"],
+            ),
+            Product(
+                name="Desk",
+                category="furniture",
+                price=349.99,
+                in_stock=False,
+                tags=["office", "wooden"],
+            ),
+            Product(
+                name="Lamp",
+                category="home",
+                price=59.99,
+                in_stock=True,
+                tags=["lighting", "LED"],
+            ),
             # Add more sample data for better pagination demonstration
         ]
         for i in range(20):
@@ -98,7 +170,9 @@ async def lifespan(app: FastAPI):
     await client.close()
 
 
-app = FastAPI(title="fastapi-qengine with Pagination Demo", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="fastapi-qengine with Pagination Demo", version="0.1.0", lifespan=lifespan
+)
 
 
 # Create explicit engine and dependency

@@ -2,19 +2,18 @@
 Type definitions for fastapi-qengine.
 """
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, TypeAlias, TypeVar, Union
+from typing import Protocol, TypeAlias, TypeVar
 
 # Basic type aliases
-FilterValue: TypeAlias = Union[str, int, float, bool, List[Any], Dict[str, Any]]
-FilterDict: TypeAlias = Dict[str, Any]
-OrderSpec: TypeAlias = Union[str, List[str]]
-FieldsSpec: TypeAlias = Dict[str, int]
+FilterValue: TypeAlias = str | int | float | bool | list[object] | dict[str, object]
+FilterDict: TypeAlias = dict[str, object]
+OrderSpec: TypeAlias = str | list[str]
+FieldsSpec: TypeAlias = dict[str, int]
 
 
-T = TypeVar("T")
+T = TypeVar("T", covariant=True)
 
 
 class FilterFormat(Enum):
@@ -54,9 +53,9 @@ class ComparisonOperator(Enum):
 class FilterInput:
     """Raw filter input from the request."""
 
-    where: Optional[FilterDict] = None
-    order: Optional[OrderSpec] = None
-    fields: Optional[FieldsSpec] = None
+    where: FilterDict | None = None
+    order: OrderSpec | None = None
+    fields: FieldsSpec | None = None
     format: FilterFormat = FilterFormat.DICT_OBJECT
 
 
@@ -81,7 +80,7 @@ class LogicalCondition(ASTNode):
     """A logical combination of conditions."""
 
     operator: LogicalOperator
-    conditions: List[ASTNode]
+    conditions: list[ASTNode]
 
 
 @dataclass
@@ -96,16 +95,16 @@ class OrderNode(ASTNode):
 class FieldsNode(ASTNode):
     """Represents field projection."""
 
-    fields: Dict[str, int]
+    fields: dict[str, int]
 
 
 @dataclass
 class FilterAST:
     """Complete filter Abstract Syntax Tree."""
 
-    where: Optional[ASTNode] = None
-    order: List[OrderNode] | None = None
-    fields: Optional[FieldsNode] = None
+    where: ASTNode | None = None
+    order: list[OrderNode] | None = None
+    fields: FieldsNode | None = None
 
     def __post_init__(self):
         if self.order is None:
@@ -119,7 +118,7 @@ class BackendQuery(Protocol):
         """Apply where conditions to the query."""
         ...
 
-    def apply_order(self, order_nodes: List[OrderNode]) -> "BackendQuery":
+    def apply_order(self, order_nodes: list[OrderNode]) -> "BackendQuery":
         """Apply ordering to the query."""
         ...
 
@@ -128,24 +127,10 @@ class BackendQuery(Protocol):
         ...
 
 
-class QueryCompiler(ABC):
-    """Abstract base class for query compilers."""
-
-    @abstractmethod
-    def compile(self, ast: FilterAST) -> Any:
-        """Compile AST to backend-specific query."""
-        pass
-
-    @abstractmethod
-    def supports_backend(self, backend_type: str) -> bool:
-        """Check if this compiler supports the given backend."""
-        pass
-
-
 class ValidationRule(Protocol):
     """Protocol for validation rules."""
 
-    def validate(self, node: ASTNode) -> List[str]:
+    def validate(self, node: ASTNode) -> list[str]:
         """Validate a node and return list of error messages."""
         ...
 
@@ -155,7 +140,28 @@ class SecurityPolicy:
     """Security policy for query execution."""
 
     max_depth: int = 10
-    allowed_operators: Optional[List[ComparisonOperator]] = None
-    allowed_fields: Optional[List[str]] = None
-    blocked_fields: Optional[List[str]] = None
+    allowed_operators: list[ComparisonOperator] | None = None
+    allowed_fields: list[str] | None = None
+    blocked_fields: list[str] | None = None
     max_array_size: int = 1000
+
+
+class Engine(Protocol[T]):
+    """
+    Protocol to standardize query engines for different database backends.
+
+    This protocol defines a common interface for all query engines, ensuring that
+    they can be used interchangeably within the system.
+    """
+
+    def build_query(self, ast: FilterAST) -> T:
+        """
+        Builds a backend-specific query from a FilterAST.
+
+        Args:
+            ast: The Abstract Syntax Tree representing the filter.
+
+        Returns:
+            A backend-specific query object.
+        """
+        ...

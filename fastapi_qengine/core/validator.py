@@ -3,7 +3,7 @@ Validator for filter inputs and AST nodes.
 """
 
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, cast
 
 from .config import ValidatorConfig
 from .errors import SecurityError, ValidationError
@@ -15,6 +15,7 @@ from .types import (
     FilterInput,
     LogicalCondition,
     OrderNode,
+    OrderSpec,
     SecurityPolicy,
     ValidationRule,
 )
@@ -23,12 +24,16 @@ from .types import (
 class FilterValidator:
     """Validates filter inputs and AST nodes."""
 
-    def __init__(self, config: Optional[ValidatorConfig] = None, security_policy: Optional[SecurityPolicy] = None):
-        self.config = config or ValidatorConfig()
-        self.security_policy = security_policy or SecurityPolicy()
-        self.validation_rules: List[ValidationRule] = []
+    def __init__(
+        self,
+        config: ValidatorConfig | None = None,
+        security_policy: SecurityPolicy | None = None,
+    ):
+        self.config: ValidatorConfig = config or ValidatorConfig()
+        self.security_policy: SecurityPolicy = security_policy or SecurityPolicy()
+        self.validation_rules: list[ValidationRule] = []
         # Operator alias maps to accept names without "$" prefix
-        self._logical_aliases = {
+        self._logical_aliases: dict[str, str] = {
             "$and": "$and",
             "$or": "$or",
             "$nor": "$nor",
@@ -36,7 +41,7 @@ class FilterValidator:
             "or": "$or",
             "nor": "$nor",
         }
-        self._comparison_aliases = {
+        self._comparison_aliases: dict[str, str] = {
             "$eq": "$eq",
             "$ne": "$ne",
             "$gt": "$gt",
@@ -89,20 +94,44 @@ class FilterValidator:
               comprehensive error reporting
             - None values for optional clauses (where, order, fields) are safely ignored
         """
-        errors = []
-        security_errors = []
+        errors: list[str] = []
+        security_errors: list[str] = []
 
         self._validate_all_clauses(filter_input, errors, security_errors)
         self._raise_collected_errors(errors, security_errors)
 
-    def _validate_all_clauses(self, filter_input: FilterInput, errors: List[str], security_errors: List[str]) -> None:
+    def _validate_all_clauses(
+        self, filter_input: FilterInput, errors: list[str], security_errors: list[str]
+    ) -> None:
         """Validate all clauses in the filter input and collect errors."""
-        self._validate_clause(filter_input.where, self._validate_where_clause, errors, security_errors)
-        self._validate_clause(filter_input.order, self._validate_order_clause, errors, security_errors)
-        self._validate_clause(filter_input.fields, self._validate_fields_clause, errors, security_errors)
+        if filter_input.where is not None:
+            try:
+                self._validate_where_clause(filter_input.where)
+            except SecurityError as e:
+                security_errors.append(str(e))
+            except ValidationError as e:
+                errors.append(str(e))
+        if filter_input.order is not None:
+            try:
+                self._validate_order_clause(filter_input.order)
+            except SecurityError as e:
+                security_errors.append(str(e))
+            except ValidationError as e:
+                errors.append(str(e))
+        if filter_input.fields is not None:
+            try:
+                self._validate_fields_clause(filter_input.fields)
+            except SecurityError as e:
+                security_errors.append(str(e))
+            except ValidationError as e:
+                errors.append(str(e))
 
     def _validate_clause(
-        self, clause_value: Any, validation_method: Callable[[Any], None], errors: List[str], security_errors: List[str]
+        self,
+        clause_value: object,
+        validation_method: Callable[[object], None],
+        errors: list[str],
+        security_errors: list[str],
     ) -> None:
         """Validate a single clause and collect any errors."""
         if clause_value is not None:
@@ -113,16 +142,20 @@ class FilterValidator:
             except ValidationError as e:
                 errors.append(str(e))
 
-    def _raise_collected_errors(self, errors: List[str], security_errors: List[str]) -> None:
+    def _raise_collected_errors(
+        self, errors: list[str], security_errors: list[str]
+    ) -> None:
         """Raise collected errors, prioritizing security errors."""
         if security_errors:
-            raise SecurityError(f"Security policy violation: {'; '.join(security_errors)}")
+            raise SecurityError(
+                f"Security policy violation: {'; '.join(security_errors)}"
+            )
         if errors:
             raise ValidationError(f"Filter validation failed: {'; '.join(errors)}")
 
-    def validate_ast_node(self, node: ASTNode) -> List[str]:
+    def validate_ast_node(self, node: ASTNode) -> list[str]:
         """Validate an AST node and return list of error messages."""
-        errors = []
+        errors: list[str] = []
 
         # Built-in validations
         if isinstance(node, FieldCondition):
@@ -140,37 +173,41 @@ class FilterValidator:
 
         return errors
 
-    def _validate_where_clause(self, where: Dict[str, Any], depth: int = 0) -> None:
+    def _validate_where_clause(self, where: dict[str, object], depth: int = 0) -> None:
         """Validate where clause structure and security."""
         # Check depth limit
         if depth > self.security_policy.max_depth:
-            raise SecurityError(f"Query depth exceeds maximum of {self.security_policy.max_depth}")
-
-        if not isinstance(where, dict):
-            raise ValidationError("Where clause must be an object")
+            raise SecurityError(
+                f"Query depth exceeds maximum of {self.security_policy.max_depth}"
+            )
 
         for key, value in where.items():
-            if isinstance(key, str) and self._canonical_operator(key).startswith("$"):
+            if self._canonical_operator(key).startswith("$"):
                 # Logical or comparison operator
                 self._validate_operator(key, value, depth)
             else:
                 # Field name
                 self._validate_field_access(key)
-                self._validate_field_condition_value(key, value, depth)
+                self._validate_field_condition_value(value, depth)
 
-    def _validate_operator(self, operator: str, value: Any, depth: int) -> None:
+    def _validate_operator(self, operator: str, value: object, depth: int) -> None:
         """Validate operator usage."""
         # Canonicalize to "$" form if an alias without prefix is used
         operator = self._canonical_operator(operator)
         # Check if operator is allowed
         if self.security_policy.allowed_operators is not None:
             operator_enum = self._get_operator_enum(operator)
-            if operator_enum and operator_enum not in self.security_policy.allowed_operators:
+            if (
+                operator_enum
+                and operator_enum not in self.security_policy.allowed_operators
+            ):
                 raise SecurityError(f"Operator '{operator}' is not allowed")
 
         # Validate operator-specific rules
         if operator in ["$and", "$or", "$nor"]:
-            self._validate_logical_operator(operator, value, depth)
+            self._validate_logical_operator(
+                operator, cast(list[dict[str, object]], value), depth
+            )
         elif operator in ["$in", "$nin"]:
             self._validate_array_operator(operator, value)
         elif operator in ["$regex"]:
@@ -181,11 +218,10 @@ class FilterValidator:
             self._validate_size_operator(operator, value)
         # Add more operator-specific validations as needed
 
-    def _validate_logical_operator(self, operator: str, value: Any, depth: int) -> None:
+    def _validate_logical_operator(
+        self, operator: str, value: list[dict[str, object]], depth: int
+    ) -> None:
         """Validate logical operator values."""
-        if not isinstance(value, list):
-            raise ValidationError(f"Operator '{operator}' requires an array value")
-
         if len(value) == 0:
             raise ValidationError(f"Operator '{operator}' cannot have empty array")
 
@@ -193,64 +229,77 @@ class FilterValidator:
         for item in value:
             self._validate_where_clause(item, depth + 1)
 
-    def _validate_array_operator(self, operator: str, value: Any) -> None:
+    def _validate_array_operator(self, operator: str, value: object) -> None:
         """Validate array operators like $in, $nin."""
         if not isinstance(value, list):
             raise ValidationError(f"Operator '{operator}' requires an array value")
 
-        if len(value) > self.security_policy.max_array_size:
-            raise SecurityError(f"Array size exceeds maximum of {self.security_policy.max_array_size}")
+        value_list = cast(list[object], value)
+        if len(value_list) > self.security_policy.max_array_size:
+            raise SecurityError(
+                f"Array size exceeds maximum of {self.security_policy.max_array_size}"
+            )
 
-    def _validate_regex_operator(self, operator: str, value: Any) -> None:
+    def _validate_regex_operator(self, operator: str, value: object) -> None:
         """Validate regex operator."""
         if not isinstance(value, str):
             raise ValidationError(f"Operator '{operator}' requires a string value")
 
         # Try to compile regex to check for validity
         try:
-            re.compile(value)
+            _ = re.compile(value)
         except re.error as e:
             raise ValidationError(f"Invalid regex pattern: {e}")
 
-    def _validate_exists_operator(self, operator: str, value: Any) -> None:
+    def _validate_exists_operator(self, operator: str, value: object) -> None:
         """Validate exists operator."""
         if not isinstance(value, bool):
             raise ValidationError(f"Operator '{operator}' requires a boolean value")
 
-    def _validate_size_operator(self, operator: str, value: Any) -> None:
+    def _validate_size_operator(self, operator: str, value: object) -> None:
         """Validate size operator."""
         if not isinstance(value, int) or value < 0:
-            raise ValidationError(f"Operator '{operator}' requires a non-negative integer")
+            raise ValidationError(
+                f"Operator '{operator}' requires a non-negative integer"
+            )
 
     def _validate_field_access(self, field_name: str) -> None:
         """Validate field access according to security policy."""
         # Check blocked fields
-        if self.security_policy.blocked_fields and field_name in self.security_policy.blocked_fields:
+        if (
+            self.security_policy.blocked_fields
+            and field_name in self.security_policy.blocked_fields
+        ):
             raise SecurityError(f"Access to field '{field_name}' is blocked")
 
         # Check allowed fields (if whitelist is defined)
-        if self.security_policy.allowed_fields and field_name not in self.security_policy.allowed_fields:
+        if (
+            self.security_policy.allowed_fields
+            and field_name not in self.security_policy.allowed_fields
+        ):
             raise SecurityError(f"Access to field '{field_name}' is not allowed")
 
         # Basic field name validation
-        if not isinstance(field_name, str) or not field_name:
+        if not field_name:
             raise ValidationError("Field names must be non-empty strings")
 
-    def _validate_field_condition_value(self, field: str, value: Any, depth: int) -> None:
+    def _validate_field_condition_value(self, value: object, depth: int) -> None:
         """Validate field condition value."""
         if isinstance(value, dict):
             # Complex condition with operators
-            for op, op_value in value.items():
+            value_dict = cast(dict[str, object], value)
+            for op, op_value in value_dict.items():
                 self._validate_operator(op, op_value, depth)
         # Simple value conditions are generally allowed
 
-    def _validate_order_clause(self, order: str) -> None:
+    def _validate_order_clause(self, order: OrderSpec) -> None:
         """Validate order clause."""
-        if not isinstance(order, str):
-            raise ValidationError("Order clause must be a string")
-
         # Parse order fields
-        for field_spec in order.split(","):
+        if isinstance(order, str):
+            field_specs = order.split(",")
+        else:
+            field_specs = order
+        for field_spec in field_specs:
             field_spec = field_spec.strip()
             if not field_spec:
                 continue
@@ -259,19 +308,19 @@ class FilterValidator:
             field_name = field_spec.lstrip("-")
             self._validate_field_access(field_name)
 
-    def _validate_fields_clause(self, fields: Dict[str, int]) -> None:
+    def _validate_fields_clause(self, fields: dict[str, int]) -> None:
         """Validate fields clause."""
-        if not isinstance(fields, dict):
-            raise ValidationError("Fields clause must be an object")
 
         for field_name, include in fields.items():
             self._validate_field_access(field_name)
             if include not in [0, 1]:
-                raise ValidationError(f"Field inclusion value must be 0 or 1, got {include}")
+                raise ValidationError(
+                    f"Field inclusion value must be 0 or 1, got {include}"
+                )
 
-    def _validate_field_condition(self, node: FieldCondition) -> List[str]:
+    def _validate_field_condition(self, node: FieldCondition) -> list[str]:
         """Validate a field condition node."""
-        errors = []
+        errors: list[str] = []
 
         try:
             self._validate_field_access(node.field)
@@ -280,12 +329,14 @@ class FilterValidator:
 
         return errors
 
-    def _validate_logical_condition(self, node: LogicalCondition) -> List[str]:
+    def _validate_logical_condition(self, node: LogicalCondition) -> list[str]:
         """Validate a logical condition node."""
-        errors = []
+        errors: list[str] = []
 
         if not node.conditions:
-            errors.append(f"Logical operator '{node.operator.value}' cannot have empty conditions")
+            errors.append(
+                f"Logical operator '{node.operator.value}' cannot have empty conditions"
+            )
 
         # Recursively validate nested conditions
         for condition in node.conditions:
@@ -293,9 +344,9 @@ class FilterValidator:
 
         return errors
 
-    def _validate_order_node(self, node: OrderNode) -> List[str]:
+    def _validate_order_node(self, node: OrderNode) -> list[str]:
         """Validate an order node."""
-        errors = []
+        errors: list[str] = []
 
         try:
             self._validate_field_access(node.field)
@@ -304,9 +355,9 @@ class FilterValidator:
 
         return errors
 
-    def _validate_fields_node(self, node: FieldsNode) -> List[str]:
+    def _validate_fields_node(self, node: FieldsNode) -> list[str]:
         """Validate a fields node."""
-        errors = []
+        errors: list[str] = []
 
         for field_name in node.fields.keys():
             try:
@@ -316,7 +367,7 @@ class FilterValidator:
 
         return errors
 
-    def _get_operator_enum(self, operator: str) -> Optional[ComparisonOperator]:
+    def _get_operator_enum(self, operator: str) -> ComparisonOperator | None:
         """Get ComparisonOperator enum for string operator."""
         try:
             return ComparisonOperator(self._canonical_operator(operator))
@@ -325,8 +376,6 @@ class FilterValidator:
 
     def _canonical_operator(self, operator: str) -> str:
         """Map operator aliases to canonical "$"-prefixed form when possible."""
-        if not isinstance(operator, str):
-            return operator
         op_lower = operator.lower()
         if op_lower in self._logical_aliases:
             return self._logical_aliases[op_lower]
