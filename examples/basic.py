@@ -3,7 +3,8 @@ Example FastAPI application demonstrating fastapi-qengine usage.
 """
 
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import cast
+from collections.abc import Mapping
 
 from beanie import Document, init_beanie
 from fastapi import Depends, FastAPI
@@ -17,8 +18,8 @@ from fastapi_qengine import (
 from fastapi_qengine.backends.beanie import (
     BeanieQueryCompiler,
     BeanieQueryEngine,
-    BeanieQueryResult,
 )
+from fastapi_qengine.backends.beanie.engine import BeanieQueryResult
 
 
 # Define Beanie models
@@ -29,7 +30,7 @@ class Product(Document):
     category: str
     price: float
     in_stock: bool
-    tags: List[str] = []
+    tags: list[str] = []
 
     class Settings:
         name = "products"
@@ -96,13 +97,14 @@ app = FastAPI(title="fastapi-qengine Demo", version="0.1.0", lifespan=lifespan)
 
 # Create explicit backend engine and dependency
 beanie_engine = BeanieQueryEngine(Product)
+# pyrefly: ignore
 qe_dep = create_qe_dependency(beanie_engine)
 
 
 @app.get(
-    "/products", response_model=List[ProductResponse], response_model_exclude_none=True
+    "/products", response_model=list[ProductResponse], response_model_exclude_none=True
 )
-async def get_products(query_result: BeanieQueryResult = Depends(qe_dep)):
+async def get_products(query_result: BeanieQueryResult[Product] = Depends(qe_dep)):
     """
     Get products with optional filtering.
 
@@ -129,17 +131,17 @@ async def get_products(query_result: BeanieQueryResult = Depends(qe_dep)):
 
 @app.get("/products/search")
 async def search_products(
-    category: Optional[str] = None,
-    min_price: Optional[float] = None,
-    max_price: Optional[float] = None,
-    in_stock: Optional[bool] = None,
+    category: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    in_stock: bool | None = None,
     # Using explicit engine + pipeline helpers (no dependency)
 ):
     """
     Alternative endpoint showing programmatic query building.
     """
     # Build filter dictionary programmatically
-    filter_dict: Dict[str, Any] = {"where": {}}
+    filter_dict: dict[str, dict[str, object]] = {"where": {}}
 
     if category:
         filter_dict["where"]["category"] = category
@@ -157,9 +159,17 @@ async def search_products(
 
     # Process through core pipeline and compile for Beanie/MongoDB
     if filter_dict["where"]:
-        ast = process_filter_to_ast(filter_dict)
+        ast = process_filter_to_ast(cast(dict[str, object], filter_dict))
         mongo = BeanieQueryCompiler().compile(ast)
-        products = await Product.find(mongo.get("filter", {})).to_list()
+
+        raw_filter = mongo.get("filter")
+        mongo_filter: Mapping[object, object]
+        if isinstance(raw_filter, dict):
+            mongo_filter = cast(Mapping[object, object], raw_filter)
+        else:
+            mongo_filter = cast(Mapping[object, object], {})
+
+        products = await Product.find(mongo_filter).to_list()
     else:
         products = await Product.find_all().to_list()
 

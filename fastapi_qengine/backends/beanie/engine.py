@@ -11,7 +11,6 @@ from enum import Enum
 from typing import Generic, TypeAlias, TypeVar, cast, get_args, get_origin
 
 from beanie import Document
-from beanie.odm.enums import SortDirection
 from beanie.odm.queries.aggregation import AggregationQuery
 from pydantic import BaseModel, TypeAdapter, create_model
 from pydantic import ValidationError as PydanticValidationError
@@ -32,13 +31,13 @@ from fastapi_qengine.core.types import (
 from .compiler import BeanieQueryCompiler
 
 # Type variable for Document subclasses
-TDocument = TypeVar("TDocument", bound=Document)
+TDocument = TypeVar(name="TDocument", bound=Document)
 
 # Type alias for Beanie query result tuple
 BeanieQueryResult: TypeAlias = tuple[
     AggregationQuery[TDocument],
     type[BaseModel] | None,
-    str | list[tuple[str, "SortDirection"]] | None,
+    str | list[tuple[str, int]] | None,
 ]
 
 
@@ -82,43 +81,173 @@ class BeanieQueryEngine(Generic[TDocument]):
             - sort: Union[None, str, list[tuple[str, SortDirection]]]
         """
         # Pre-process AST to validate and transform field values
-        validated_ast = self._validate_and_transform_ast(ast)
+        validated_ast: FilterAST = self._validate_and_transform_ast(ast)
 
-        query_components = self.compiler.compile(validated_ast)
+        query_components: dict[str, object] = self.compiler.compile(ast=validated_ast)
 
         # Build aggregation pipeline stages
         pipeline: list[dict[str, object]] = []
 
         # Apply filter as $match stage
-        if "filter" in query_components:
-            filter_dict = cast(dict[str, object], query_components["filter"])
-            pipeline.append({"$match": filter_dict})
+        self._build_filter_stage(query_components, pipeline)
 
         # Apply sort as $sort stage
-        sort_spec: str | list[tuple[str, SortDirection]] | None = None
-        if "sort" in query_components:
-            raw_sort = query_components["sort"]
-            if isinstance(raw_sort, str):
-                sort_spec = raw_sort
-                # Convert string sort to MongoDB sort document
-                # Format: "field" or "-field" for descending
-                sort_dict: dict[str, int] = {}
-                for field in sort_spec.split(","):
-                    field = field.strip()
-                    if field.startswith("-"):
-                        sort_dict[field[1:]] = -1
-                    else:
-                        sort_dict[field] = 1
-                pipeline.append({"$sort": sort_dict})
-            elif isinstance(raw_sort, list):
-                sort_spec = cast(list[tuple[str, SortDirection]], raw_sort)
-                # Convert list of tuples to MongoDB sort document
-                sort_dict = {}
-                for field, direction in sort_spec:
-                    sort_dict[field] = 1 if direction == SortDirection.ASCENDING else -1
-                pipeline.append({"$sort": sort_dict})
+        sort_spec = self._build_sort_stage(query_components, pipeline)
 
         # Handle projection as $project stage
+        projection_model = self._build_projection_stage(query_components, pipeline)
+
+        # Create aggregation query with the pipeline
+        query = self._create_aggregation_query(pipeline, projection_model)
+
+        return (
+            query,
+            projection_model,
+            sort_spec,
+        )
+
+    def _build_filter_stage(self, query_components: dict[str, object], pipeline: list[dict[str, object]]) -> None:
+        """
+        Build and append filter stage to the aggregation pipeline.
+
+        Args:
+            query_components: Compiled query components
+            pipeline: Aggregation pipeline to append to
+        """
+        if "filter" in query_components:
+            filter_dict_raw = cast(dict[str, object], query_components["filter"])
+            # Convert enum instances to their values for MongoDB compatibility
+            filter_dict = cast(dict[str, object], self._convert_enums_to_values(filter_dict_raw))
+            pipeline.append({"$match": filter_dict})
+
+    def _build_sort_stage(
+        self, query_components: dict[str, object], pipeline: list[dict[str, object]]
+    ) -> str | list[tuple[str, int]] | None:
+        """
+        Build and append sort stage to the aggregation pipeline.
+
+        Args:
+            query_components: Compiled query components
+            pipeline: Aggregation pipeline to append to
+
+        Returns:
+            Sort specification for result tuple
+        """
+        if "sort" not in query_components:
+            return None
+
+        raw_sort = query_components["sort"]
+        sort_spec = self._process_sort_data(raw_sort, pipeline)
+        return sort_spec
+
+    def _process_sort_data(
+        self, raw_sort: object, pipeline: list[dict[str, object]]
+    ) -> str | list[tuple[str, int]] | None:
+        """
+        Process sort data and append sort stage to pipeline.
+
+        Args:
+            raw_sort: Raw sort specification (string or list)
+            pipeline: Aggregation pipeline to append to
+
+        Returns:
+            Processed sort specification
+        """
+        if isinstance(raw_sort, str):
+            return self._process_string_sort(raw_sort, pipeline)
+        elif isinstance(raw_sort, list):
+            return self._process_list_sort(cast(list[object], raw_sort), pipeline)
+
+        return None
+
+    def _process_string_sort(self, sort_spec: str, pipeline: list[dict[str, object]]) -> str:
+        """
+        Process string sort specification.
+
+        Args:
+            sort_spec: String sort specification (e.g., "field1,-field2")
+            pipeline: Aggregation pipeline to append to
+
+        Returns:
+            Original sort specification string
+        """
+        sort_dict = self._parse_string_sort_fields(sort_spec)
+        pipeline.append({"$sort": sort_dict})
+        return sort_spec
+
+    def _process_list_sort(self, sort_spec: list[object], pipeline: list[dict[str, object]]) -> list[tuple[str, int]]:
+        """
+        Process list sort specification.
+
+        Args:
+            sort_spec: List of (field, direction) tuples
+            pipeline: Aggregation pipeline to append to
+
+        Returns:
+            Original sort specification list
+        """
+        sort_dict = self._parse_list_sort_fields(sort_spec)
+        pipeline.append({"$sort": sort_dict})
+        return cast(list[tuple[str, int]], sort_spec)
+
+    def _parse_string_sort_fields(self, sort_spec: str) -> dict[str, int]:
+        """
+        Parse string sort specification into MongoDB sort dictionary.
+
+        Args:
+            sort_spec: Comma-separated field list with optional '-' prefix for descending
+
+        Returns:
+            MongoDB sort dictionary with field names as keys and sort directions as values
+        """
+        sort_dict: dict[str, int] = {}
+        fields = sort_spec.split(",")
+
+        for field in fields:
+            field = field.strip()
+            if field.startswith("-"):
+                sort_dict[field[1:]] = -1
+            else:
+                sort_dict[field] = 1
+
+        return sort_dict
+
+    def _parse_list_sort_fields(self, sort_spec: list[object]) -> dict[str, int]:
+        """
+        Parse list sort specification into MongoDB sort dictionary.
+
+        Args:
+            sort_spec: List of (field, direction) tuples where direction is 1 (asc) or -1 (desc)
+
+        Returns:
+            MongoDB sort dictionary with field names as keys and sort directions as values
+        """
+        sort_dict: dict[str, int] = {}
+
+        for item in sort_spec:
+            if isinstance(item, (list, tuple)):
+                item_cast: list[object] | tuple[object, ...] = cast(list[object] | tuple[object, ...], item)
+                if len(item_cast) == 2:
+                    field, direction = item_cast
+                    # Direction should be 1 (ascending) or -1 (descending)
+                    if isinstance(direction, int) and direction in (1, -1):
+                        sort_dict[cast(str, field)] = direction
+
+        return sort_dict
+
+    def _build_projection_stage(
+        self, query_components: dict[str, object], pipeline: list[dict[str, object]]
+    ) -> type[BaseModel] | None:
+        """
+        Build and append projection stage to the aggregation pipeline.
+
+        Args:
+            query_components: Compiled query components
+            pipeline: Aggregation pipeline to append to
+
+        Returns:
+            Projection model for result tuple
+        """
         projection_model: type[BaseModel] | None = None
         if "projection" in query_components:
             projection_dict_raw = query_components["projection"]
@@ -128,26 +257,43 @@ class BeanieQueryEngine(Generic[TDocument]):
                 projection_model = self._create_projection_model(projection_dict)
                 # Add $project stage to pipeline
                 pipeline.append({"$project": projection_dict})
+        else:
+            # No projection specified - create a projection model with all fields
+            # to ensure we get Document instances instead of dicts
+            all_fields = list(getattr(self.model_class, "model_fields", {}).keys())
+            projection_dict = dict.fromkeys(all_fields, 1)
+            projection_model = self._create_projection_model(projection_dict)
+            # Don't add $project stage for all fields - let Beanie handle it
 
-        # Create aggregation query with the pipeline
-        # Note: When projection_model is provided, result type is the projection model
-        query: AggregationQuery[TDocument]
+        return projection_model
+
+    def _create_aggregation_query(
+        self, pipeline: list[dict[str, object]], projection_model: type[BaseModel] | None
+    ) -> AggregationQuery[TDocument]:
+        """
+        Create aggregation query from pipeline and projection model.
+
+        Args:
+            pipeline: Aggregation pipeline stages
+            projection_model: Projection model for typed results
+
+        Returns:
+            Configured aggregation query
+        """
+        # Always use projection_model to get typed results
         if projection_model:
             query = cast(
                 AggregationQuery[TDocument],
                 self.model_class.aggregate(pipeline, projection_model=projection_model),  # pyright: ignore[reportUnknownMemberType]
             )
         else:
+            # Fallback - should not happen with the logic above
             query = cast(
                 AggregationQuery[TDocument],
                 self.model_class.aggregate(pipeline),  # pyright: ignore[reportUnknownMemberType]
             )
 
-        return (
-            query,
-            projection_model,
-            sort_spec,
-        )
+        return query
 
     def _validate_and_transform_ast(self, ast: FilterAST) -> FilterAST:
         """
@@ -178,9 +324,7 @@ class BeanieQueryEngine(Generic[TDocument]):
         if ast.fields:
             validated_fields = {}
             for field, include in ast.fields.fields.items():
-                base_field = field.split(".", 1)[
-                    0
-                ]  # For dot notation, check at least the base field
+                base_field = field.split(".", 1)[0]  # For dot notation, check at least the base field
                 try:
                     self._validate_field_exists(base_field)
                     validated_fields[field] = include
@@ -206,9 +350,7 @@ class BeanieQueryEngine(Generic[TDocument]):
             self._validate_field_exists(node.field)
 
             # Transform value based on field type
-            transformed_value = self._transform_value(
-                node.field, node.operator, node.value
-            )
+            transformed_value = self._transform_value(node.field, node.operator, node.value)
             return FieldCondition(
                 field=node.field,
                 operator=node.operator,
@@ -217,10 +359,7 @@ class BeanieQueryEngine(Generic[TDocument]):
 
         elif isinstance(node, LogicalCondition):
             # Recursively validate and transform each condition
-            transformed_conditions = [
-                self._validate_and_transform_node(condition)
-                for condition in node.conditions
-            ]
+            transformed_conditions = [self._validate_and_transform_node(condition) for condition in node.conditions]
             return LogicalCondition(
                 operator=node.operator,
                 conditions=transformed_conditions,
@@ -269,9 +408,7 @@ class BeanieQueryEngine(Generic[TDocument]):
             return self._field_type_cache[field_name]
 
         # Get field type from model
-        model_fields: dict[str, FieldInfo] = getattr(
-            self.model_class, "model_fields", {}
-        )
+        model_fields: dict[str, FieldInfo] = getattr(self.model_class, "model_fields", {})
         if field_name not in model_fields:
             return object
 
@@ -287,9 +424,7 @@ class BeanieQueryEngine(Generic[TDocument]):
             if "Union" in str(origin) or type_name == "UnionType":
                 args = cast(tuple[object, object], get_args(field_type))
                 # Remove None from Union args to get the base type
-                non_none_args: list[object] = [
-                    arg for arg in args if arg is not type(None)
-                ]  # noqa: E721
+                non_none_args: list[object] = [arg for arg in args if arg is not type(None)]  # noqa: E721
                 if len(non_none_args) == 1:
                     field_type = non_none_args[0]
 
@@ -297,15 +432,13 @@ class BeanieQueryEngine(Generic[TDocument]):
         self._field_type_cache[field_name] = field_type
         return field_type
 
-    def _transform_value(
-        self, field_path: str, operator: ComparisonOperator, value: object
-    ) -> object:
+    def _transform_value(self, field_path: str, operator: ComparisonOperator | str, value: object) -> object:
         """
         Transform a value based on the field type and operator.
 
         Args:
             field_path: Field path
-            operator: Comparison operator
+            operator: Comparison operator (enum or string)
             value: Original value
 
         Returns:
@@ -318,17 +451,22 @@ class BeanieQueryEngine(Generic[TDocument]):
         if field_name.startswith("$"):
             return value
 
+        # Normalize operator to enum
+        if isinstance(operator, str):
+            try:
+                operator = ComparisonOperator(operator)
+            except ValueError:
+                # If not a valid operator, treat as EQ
+                operator = ComparisonOperator.EQ
+
         field_type = self._get_field_type(field_name)
 
         # Handle lists for $in and $nin operators
-        if operator in (ComparisonOperator.IN, ComparisonOperator.NIN) and isinstance(
-            value, list
-        ):
+        if operator in (ComparisonOperator.IN, ComparisonOperator.NIN) and isinstance(value, list):
             try:
                 raw_list = cast(list[object], value)
                 transformed_list: list[object] = [
-                    self._transform_scalar_value(field_type, item, field_path)
-                    for item in raw_list
+                    self._transform_scalar_value(field_type, item, field_path) for item in raw_list
                 ]
                 return transformed_list
             except Exception as e:
@@ -349,9 +487,7 @@ class BeanieQueryEngine(Generic[TDocument]):
                 value=cast(list[object], value),
             ) from e
 
-    def _transform_scalar_value(
-        self, field_type: object, value: object, field_path: str
-    ) -> object:
+    def _transform_scalar_value(self, field_type: object, value: object, field_path: str) -> object:
         """
         Transform a scalar value based on field type.
 
@@ -386,14 +522,12 @@ class BeanieQueryEngine(Generic[TDocument]):
 
         # Date fields
         if field_type == date and isinstance(value, str):
-            return date.fromisoformat(value)
+            parsed_date = date.fromisoformat(value)
+            # Convert to datetime at start of day for MongoDB compatibility
+            return datetime.combine(parsed_date, datetime.min.time())
 
         # Enum fields
-        if (
-            isinstance(field_type, type)
-            and issubclass(field_type, Enum)
-            and not isinstance(value, Enum)
-        ):
+        if isinstance(field_type, type) and issubclass(field_type, Enum) and not isinstance(value, Enum):
             try:
                 if isinstance(value, str) and hasattr(field_type, value):
                     return cast(object, getattr(field_type, value))
@@ -411,9 +545,7 @@ class BeanieQueryEngine(Generic[TDocument]):
             # This allows MongoDB to handle the comparison as it sees fit
             return value
 
-    def _create_projection_model(
-        self, projection_dict: dict[str, int]
-    ) -> type[BaseModel] | None:
+    def _create_projection_model(self, projection_dict: dict[str, int]) -> type[BaseModel] | None:
         """
         Crea un modelo Pydantic para usar con .project() en Beanie
         a partir de un dict de proyección con soporte dot-notation.
@@ -424,37 +556,23 @@ class BeanieQueryEngine(Generic[TDocument]):
           - Aplica security policy para filtrar campos permitidos/bloqueados.
         """
         # Apply security policy to filter projection fields
-        filtered_projection: dict[str, int] = self._apply_security_policy_to_projection(
-            projection_dict
-        )
+        filtered_projection: dict[str, int] = self._apply_security_policy_to_projection(projection_dict)
 
         if not filtered_projection:
             # Si la security policy bloquea todos los campos, retornar None
             return None
 
-        include_paths: list[str] = [
-            key for key, val in filtered_projection.items() if val == 1
-        ]
+        include_paths: list[str] = [key for key, val in filtered_projection.items() if val == 1]
 
         if include_paths:
             tree = self._paths_to_tree(include_paths)
         else:
             # Exclusión de primer nivel
-            exclude_top: set[str] = {
-                key.split(".", 1)[0]
-                for key, val in filtered_projection.items()
-                if val == 0
-            }
+            exclude_top: set[str] = {key.split(".", 1)[0] for key, val in filtered_projection.items() if val == 0}
 
-            # Tipado explícito para evitar Any
-            model_fields: dict[str, FieldInfo] = getattr(
-                self.model_class, "model_fields", {}
-            )
-            to_include: list[str] = [
-                field_name
-                for field_name in model_fields.keys()
-                if field_name not in exclude_top
-            ]
+            # Tipado explícito para evitar object
+            model_fields: dict[str, FieldInfo] = getattr(self.model_class, "model_fields", {})
+            to_include: list[str] = [field_name for field_name in model_fields.keys() if field_name not in exclude_top]
 
             # Apply security policy to the list of fields to include
             to_include = self._filter_fields_by_policy(to_include)
@@ -465,19 +583,14 @@ class BeanieQueryEngine(Generic[TDocument]):
 
         model_name = f"{getattr(self.model_class, '__name__', 'Unknown')}Projection"
         try:
-            # Aseguramos tipado a BaseModel
             base_model_class: type[BaseModel] = cast(type[BaseModel], self.model_class)
-            projection_model: type[BaseModel] = self._build_model_from_tree(
-                base_model_class, tree, model_name
-            )
+            projection_model: type[BaseModel] = self._build_model_from_tree(base_model_class, tree, model_name)
             return projection_model
         except Exception:
             # Fallback suave: si algo falla, no forzamos proyección
             return None
 
-    def _apply_security_policy_to_projection(
-        self, projection_dict: dict[str, int]
-    ) -> dict[str, int]:
+    def _apply_security_policy_to_projection(self, projection_dict: dict[str, int]) -> dict[str, int]:
         """
         Apply security policy to filter projection dictionary.
 
@@ -730,3 +843,26 @@ class BeanieQueryEngine(Generic[TDocument]):
         """
         # build_query already includes validation and transformation
         return self.build_query(ast)
+
+    def _convert_enums_to_values(
+        self, data: object
+    ) -> object | dict[object, object | dict[object, object] | list[object] | object] | list[object] | object:
+        """
+        Recursively convert enum instances to their values in nested data structures.
+
+        Args:
+            data: Input data potentially containing enum instances
+
+        Returns:
+            Data with enum instances converted to their values
+        """
+        if isinstance(data, Enum):
+            return cast(object, data.value)
+        elif isinstance(data, dict):
+            return {
+                key: self._convert_enums_to_values(value) for key, value in cast(dict[object, object], data).items()
+            }
+        elif isinstance(data, list):
+            return [self._convert_enums_to_values(item) for item in cast(list[object], data)]
+        else:
+            return data

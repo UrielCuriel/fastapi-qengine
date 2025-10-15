@@ -4,37 +4,39 @@ Beanie query adapter.
 This module contains the BeanieQueryAdapter class for building Beanie/PyMongo queries.
 """
 
-from typing import cast
+from typing import Literal, cast
+
+from fastapi_qengine.core.compiler_base import QueryAdapter
 
 
 class BeanieQueryAdapter:
     """Adapter for Beanie/PyMongo query objects."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.query: dict[str, object] = {}
         self.sort_spec: list[tuple[str, int]] = []
         self.projection: dict[str, int] | None = None
 
-    def add_where_condition(self, condition: object) -> "BeanieQueryAdapter":
+    def add_where_condition(self, condition: object) -> "QueryAdapter":
         """Add a where condition to the query."""
-        condition = cast(dict[str, object], condition)
+        condition_dict = cast(dict[str, object], condition)
         if not self.query:
-            self.query = condition
+            self.query = condition_dict
         else:
             # Merge with existing query using $and
             if "$and" in self.query:
-                cast(list[object], self.query["$and"]).append(condition)
+                cast(list[object], self.query["$and"]).append(condition_dict)
             else:
-                self.query = {"$and": [self.query, condition]}
+                self.query = {"$and": [self.query, condition_dict]}
         return self
 
-    def add_sort(self, field: str, ascending: bool = True) -> "BeanieQueryAdapter":
+    def add_sort(self, field: str, ascending: bool = True) -> "QueryAdapter":
         """Add sorting to the query."""
-        direction = 1 if ascending else -1
+        direction: Literal[1, -1] = 1 if ascending else -1
         self.sort_spec.append((field, direction))
         return self
 
-    def set_projection(self, fields: dict[str, int]) -> "BeanieQueryAdapter":
+    def set_projection(self, fields: dict[str, int]) -> "QueryAdapter":
         """Set field projection."""
         self.projection = fields
         return self

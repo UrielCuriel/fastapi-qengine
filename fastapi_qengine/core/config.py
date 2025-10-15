@@ -69,9 +69,7 @@ class QEngineConfig:
     # Backend-specific settings
     backend_settings: dict[str, dict[str, object]] = field(default_factory=dict)
 
-    def get_backend_setting(
-        self, backend: str, key: str, default: object = None
-    ) -> object:
+    def get_backend_setting(self, backend: str, key: str, default: object = None) -> object:
         """Get a backend-specific setting."""
         return self.backend_settings.get(backend, {}).get(key, default)
 

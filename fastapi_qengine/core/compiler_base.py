@@ -9,8 +9,10 @@ from .types import (
     ASTNode,
     FieldCondition,
     FieldsNode,
+    FilterAST,
     LogicalCondition,
     OrderNode,
+    T,
 )
 
 
@@ -29,12 +31,12 @@ class QueryAdapter(Protocol):
         """Set field projection."""
         ...
 
-    def build(self) -> object:
+    def build(self) -> dict[str, object]:
         """Build the final query object."""
         ...
 
 
-class BaseQueryCompiler(Protocol):
+class BaseQueryCompiler(Protocol[T]):
     """Protocol for query compilers implementing Template Method pattern."""
 
     backend_name: str
@@ -47,15 +49,11 @@ class BaseQueryCompiler(Protocol):
         """Apply where conditions to the query."""
         ...
 
-    def apply_order(
-        self, query: QueryAdapter, order_nodes: list[OrderNode]
-    ) -> QueryAdapter:
+    def apply_order(self, query: QueryAdapter, order_nodes: list[OrderNode]) -> QueryAdapter:
         """Apply ordering to the query."""
         ...
 
-    def apply_fields(
-        self, query: QueryAdapter, fields_node: FieldsNode
-    ) -> QueryAdapter:
+    def apply_fields(self, query: QueryAdapter, fields_node: FieldsNode) -> QueryAdapter:
         """Apply field projection to the query."""
         ...
 
@@ -79,9 +77,33 @@ class BaseQueryCompiler(Protocol):
         """Compile a condition node to backend-specific format."""
         ...
 
+    def build_query(self, ast: FilterAST) -> T:
+        """
+        Builds a backend-specific query from a FilterAST.
+
+        Args:
+            ast: The Abstract Syntax Tree representing the filter.
+
+        Returns:
+            A backend-specific query object.
+        """
+        ...
+
+    def compile(self, ast: FilterAST) -> T:
+        """
+        Compile FilterAST to based-specific query components.
+
+        Args:
+            ast: FilterAST to compile
+
+        Returns:
+            Dictionary with query components
+        """
+        ...
+
 
 # Helper function for compile_condition to be used by implementations
-def compile_condition_helper(compiler: BaseQueryCompiler, condition: ASTNode) -> object:
+def compile_condition_helper(compiler: BaseQueryCompiler[T], condition: ASTNode) -> object:
     """Helper function to compile a condition node to backend-specific format."""
     if isinstance(condition, FieldCondition):
         return compiler.compile_field_condition(condition)

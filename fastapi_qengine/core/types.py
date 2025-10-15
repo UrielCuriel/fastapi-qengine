@@ -153,15 +153,3 @@ class Engine(Protocol[T]):
     This protocol defines a common interface for all query engines, ensuring that
     they can be used interchangeably within the system.
     """
-
-    def build_query(self, ast: FilterAST) -> T:
-        """
-        Builds a backend-specific query from a FilterAST.
-
-        Args:
-            ast: The Abstract Syntax Tree representing the filter.
-
-        Returns:
-            A backend-specific query object.
-        """
-        ...

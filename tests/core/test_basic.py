@@ -3,6 +3,7 @@ Basic tests for fastapi-qengine core functionality.
 """
 
 from typing import cast
+
 import pytest
 
 from fastapi_qengine.backends.beanie import BeanieQueryCompiler
@@ -40,9 +41,7 @@ class TestFilterParser:
         """Test parsing URL-encoded JSON string."""
         parser = FilterParser()
         # URL-encoded version of {"where": {"category": "electronics"}}
-        encoded_json = (
-            "%7B%22where%22%3A%20%7B%22category%22%3A%20%22electronics%22%7D%7D"
-        )
+        encoded_json = "%7B%22where%22%3A%20%7B%22category%22%3A%20%22electronics%22%7D%7D"
 
         result = parser.parse(encoded_json)
 
@@ -53,9 +52,7 @@ class TestFilterParser:
         """Test parsing dictionary input."""
         parser = FilterParser()
 
-        result = parser.parse(
-            cast(dict[str, object], sample_filter_data["simple_equality"])
-        )
+        result = parser.parse(cast(dict[str, object], sample_filter_data["simple_equality"]))
 
         assert result.format == FilterFormat.DICT_OBJECT
         assert result.where == {"category": "electronics"}
@@ -72,15 +69,11 @@ class TestFilterParser:
             "price": {"$gt": 50},  # Should be converted to number
         }
 
-    def test_parse_nested_params_with_order(
-        self, sample_nested_params: dict[str, object]
-    ):
+    def test_parse_nested_params_with_order(self, sample_nested_params: dict[str, object]):
         """Test parsing nested params with order."""
         parser = FilterParser()
 
-        result = parser.parse(
-            cast(dict[str, object], sample_nested_params["with_order"])
-        )
+        result = parser.parse(cast(dict[str, object], sample_nested_params["with_order"]))
 
         assert result.format == FilterFormat.NESTED_PARAMS
         assert result.where == {"in_stock": True}  # Should be converted to boolean
@@ -137,14 +130,10 @@ class TestFilterNormalizer:
         # Simple equality should be converted to explicit $eq
         assert result.where == {"category": {"$eq": "electronics"}}
 
-    def test_normalize_where_complex_condition(
-        self, sample_filter_data: dict[str, object]
-    ):
+    def test_normalize_where_complex_condition(self, sample_filter_data: dict[str, object]):
         """Test normalizing complex conditions."""
         normalizer = FilterNormalizer()
-        filter_input = FilterParser().parse(
-            cast(dict[str, object], sample_filter_data["comparison_operators"])
-        )
+        filter_input = FilterParser().parse(cast(dict[str, object], sample_filter_data["comparison_operators"]))
 
         result = normalizer.normalize(filter_input)
 
@@ -153,9 +142,7 @@ class TestFilterNormalizer:
     def test_normalize_logical_operators(self, sample_filter_data: dict[str, object]):
         """Test normalizing logical operators."""
         normalizer = FilterNormalizer()
-        filter_input = FilterParser().parse(
-            cast(dict[str, object], sample_filter_data["logical_operators"])
-        )
+        filter_input = FilterParser().parse(cast(dict[str, object], sample_filter_data["logical_operators"]))
 
         result = normalizer.normalize(filter_input)
 
@@ -180,9 +167,7 @@ class TestFilterNormalizer:
     def test_normalize_fields_boolean_values(self):
         """Test normalizing fields with boolean values."""
         normalizer = FilterNormalizer()
-        filter_input = FilterParser().parse(
-            {"fields": {"name": True, "price": False, "category": 1}}
-        )
+        filter_input = FilterParser().parse({"fields": {"name": True, "price": False, "category": 1}})
 
         result = normalizer.normalize(filter_input)
 
@@ -205,11 +190,7 @@ class TestASTBuilder:
         assert ast.where is not None
         # Use getattr/hasattr to avoid static type diagnostics on dynamic AST nodes
         where_node = cast(object, ast.where)
-        if (
-            hasattr(where_node, "field")
-            and hasattr(where_node, "operator")
-            and hasattr(where_node, "value")
-        ):
+        if hasattr(where_node, "field") and hasattr(where_node, "operator") and hasattr(where_node, "value"):
             assert getattr(where_node, "field") == "category"
             assert getattr(where_node, "operator") == ComparisonOperator.EQ
             assert getattr(where_node, "value") == "electronics"
@@ -222,9 +203,7 @@ class TestASTBuilder:
         builder = ASTBuilder()
         normalizer = FilterNormalizer()
 
-        filter_input = FilterParser().parse(
-            cast(dict[str, object], sample_filter_data["logical_operators"])
-        )
+        filter_input = FilterParser().parse(cast(dict[str, object], sample_filter_data["logical_operators"]))
         normalized = normalizer.normalize(filter_input)
 
         ast = builder.build(normalized)
@@ -262,9 +241,7 @@ class TestASTBuilder:
         builder = ASTBuilder()
         normalizer = FilterNormalizer()
 
-        filter_input = FilterParser().parse(
-            cast(dict[str, object], sample_filter_data["complex_query"])
-        )
+        filter_input = FilterParser().parse(cast(dict[str, object], sample_filter_data["complex_query"]))
         normalized = normalizer.normalize(filter_input)
 
         ast = builder.build(normalized)
@@ -277,9 +254,7 @@ class TestASTBuilder:
         builder = ASTBuilder()
         normalizer = FilterNormalizer()
 
-        filter_input = FilterParser().parse(
-            {"where": {"price": {"$gte": 10, "$lte": 100}}}
-        )
+        filter_input = FilterParser().parse({"where": {"price": {"$gte": 10, "$lte": 100}}})
         normalized = normalizer.normalize(filter_input)
 
         ast = builder.build(normalized)
@@ -301,9 +276,7 @@ class TestASTBuilder:
         # Manually create invalid condition to bypass normalizer validation
         from fastapi_qengine.core.types import FilterFormat, FilterInput
 
-        invalid_input = FilterInput(
-            where={"price": {"$invalid": 50}}, format=FilterFormat.DICT_OBJECT
-        )
+        invalid_input = FilterInput(where={"price": {"$invalid": 50}}, format=FilterFormat.DICT_OBJECT)
 
         with pytest.raises(ParseError) as exc_info:
             _ = builder.build(invalid_input)
@@ -335,9 +308,7 @@ class TestBeanieCompiler:
         builder = ASTBuilder()
         normalizer = FilterNormalizer()
 
-        filter_input = FilterParser().parse(
-            {"where": {"price": {"$gt": 50, "$lt": 100}}}
-        )
+        filter_input = FilterParser().parse({"where": {"price": {"$gt": 50, "$lt": 100}}})
         normalized = normalizer.normalize(filter_input)
         ast = builder.build(normalized)
 
@@ -357,9 +328,7 @@ class TestBeanieCompiler:
         builder = ASTBuilder()
         normalizer = FilterNormalizer()
 
-        filter_input = FilterParser().parse(
-            cast(dict[str, object], sample_filter_data["logical_operators"])
-        )
+        filter_input = FilterParser().parse(cast(dict[str, object], sample_filter_data["logical_operators"]))
         normalized = normalizer.normalize(filter_input)
         ast = builder.build(normalized)
 
@@ -381,9 +350,7 @@ class TestBeanieCompiler:
         builder = ASTBuilder()
         normalizer = FilterNormalizer()
 
-        filter_input = FilterParser().parse(
-            {"where": {"category": "electronics"}, "order": "name,-price"}
-        )
+        filter_input = FilterParser().parse({"where": {"category": "electronics"}, "order": "name,-price"})
         normalized = normalizer.normalize(filter_input)
         ast = builder.build(normalized)
 

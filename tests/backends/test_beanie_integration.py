@@ -5,9 +5,11 @@ Integration test for Beanie backend with validation and transformation.
 from collections.abc import AsyncGenerator, Mapping
 from datetime import date, datetime
 from enum import Enum
+
 import pytest
 import pytest_asyncio
 from beanie import Document, init_beanie  # pyright: ignore[reportUnknownVariableType]
+from beanie.odm.documents import Document
 from beanie.odm.fields import PydanticObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
@@ -16,6 +18,7 @@ from fastapi_qengine.backends.beanie import BeanieQueryEngine
 from fastapi_qengine.core.ast import ASTBuilder
 from fastapi_qengine.core.normalizer import FilterNormalizer
 from fastapi_qengine.core.parser import FilterParser
+from fastapi_qengine.core.types import FilterAST
 
 
 class ProductStatus(Enum):
@@ -75,10 +78,8 @@ async def mongo_client(
     await mongo_client.close()
 
 
-@pytest_asyncio.fixture(scope="function")
-async def db_init(
-    mongo_client: AsyncMongoClient[Mapping[str, object]], db_name: str
-) -> AsyncGenerator[None, None]:
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def db_init(mongo_client: AsyncMongoClient[Mapping[str, object]], db_name: str) -> AsyncGenerator[None, None]:
     """Initialize database with sample data."""
     test_db: AsyncDatabase[Mapping[str, object]] = mongo_client.get_database(db_name)
     await init_beanie(database=test_db, document_models=[AdvancedProduct])
@@ -140,28 +141,24 @@ async def db_init(
 @pytest_asyncio.fixture
 async def engine() -> BeanieQueryEngine[Document]:
     """BeanieQueryEngine instance."""
-    return BeanieQueryEngine(model_class=AdvancedProduct)
+    return BeanieQueryEngine[Document](model_class=AdvancedProduct)
 
 
 @pytest.mark.asyncio
 async def test_query_with_date_transformation(
     engine: BeanieQueryEngine[AdvancedProduct],
-):
+) -> None:
     """Test querying with date transformations."""
     # Query products released after a specific date
-    filter_input: dict[str, object] = {
-        "where": {"release_date": {"$gte": "2022-06-01"}}
-    }
+    filter_input: dict[str, object] = {"where": {"release_date": {"$gte": "2022-06-01"}}}
 
-    ast = ASTBuilder().build(
-        FilterNormalizer().normalize(FilterParser().parse(filter_input))
-    )
+    ast: FilterAST = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
     query, _, _ = engine.build_query(ast)
-    results = await query.to_list()
+    results: list[AdvancedProduct] = await query.to_list()
 
     # Should return products released on or after June 1, 2022
     assert len(results) == 2
-    product_names = [p.name for p in results]
+    product_names: list[str] = [p.name for p in results]
     assert "Laptop Pro" in product_names
     assert "Gaming Keyboard" in product_names
 
@@ -169,16 +166,14 @@ async def test_query_with_date_transformation(
 @pytest.mark.asyncio
 async def test_query_with_enum_transformation(
     engine: BeanieQueryEngine[AdvancedProduct],
-):
+) -> None:
     """Test querying with enum transformations."""
     # Query products with AVAILABLE status
     filter_input: dict[str, object] = {"where": {"status": "available"}}
 
-    ast = ASTBuilder().build(
-        FilterNormalizer().normalize(FilterParser().parse(filter_input))
-    )
+    ast: FilterAST = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
     query, _, _ = engine.build_query(ast)
-    results = await query.to_list()
+    results: list[AdvancedProduct] = await query.to_list()
 
     # Should return only available products
     assert len(results) == 2
@@ -189,22 +184,18 @@ async def test_query_with_enum_transformation(
 @pytest.mark.asyncio
 async def test_query_with_list_transformation(
     engine: BeanieQueryEngine[AdvancedProduct],
-):
+) -> None:
     """Test querying with list transformations."""
     # Query products with specific tags
-    filter_input: dict[str, object] = {
-        "where": {"tags": {"$in": ["gaming", "vintage"]}}
-    }
+    filter_input: dict[str, object] = {"where": {"tags": {"$in": ["gaming", "vintage"]}}}
 
-    ast = ASTBuilder().build(
-        FilterNormalizer().normalize(FilterParser().parse(filter_input))
-    )
+    ast: FilterAST = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
     query, _, _ = engine.build_query(ast)
-    results = await query.to_list()
+    results: list[AdvancedProduct] = await query.to_list()
 
     # Should return gaming and vintage products
     assert len(results) == 2
-    product_names = [p.name for p in results]
+    product_names: list[str] = [p.name for p in results]
     assert "Gaming Keyboard" in product_names
     assert "Vintage Monitor" in product_names
 
@@ -212,7 +203,7 @@ async def test_query_with_list_transformation(
 @pytest.mark.asyncio
 async def test_query_with_multiple_transformations(
     engine: BeanieQueryEngine[AdvancedProduct],
-):
+) -> None:
     """Test querying with multiple field transformations."""
     # Complex query with multiple fields and transformations
     filter_input: dict[str, object] = {
@@ -223,11 +214,9 @@ async def test_query_with_multiple_transformations(
         }
     }
 
-    ast = ASTBuilder().build(
-        FilterNormalizer().normalize(FilterParser().parse(filter_input))
-    )
+    ast: FilterAST = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
     query, _, _ = engine.build_query(ast)
-    results = await query.to_list()
+    results: list[AdvancedProduct] = await query.to_list()
 
     # Should return available products under $100 created in March 2023 or later
     assert len(results) == 1
@@ -235,7 +224,7 @@ async def test_query_with_multiple_transformations(
 
 
 @pytest.mark.asyncio
-async def test_query_with_invalid_field_skipping(engine: BeanieQueryEngine[Document]):
+async def test_query_with_invalid_field_skipping(engine: BeanieQueryEngine[Document]) -> None:
     """Test that invalid fields in projection are skipped."""
     # Query with valid and invalid projection fields
     filter_input: dict[str, object] = {
@@ -243,11 +232,9 @@ async def test_query_with_invalid_field_skipping(engine: BeanieQueryEngine[Docum
         "fields": {"name": 1, "price": 1, "non_existent_field": 1},
     }
 
-    ast = ASTBuilder().build(
-        FilterNormalizer().normalize(FilterParser().parse(filter_input))
-    )
+    ast: FilterAST = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
     query, _projection_model, _ = engine.build_query(ast)
-    results = await query.to_list()
+    results: list[Document] = await query.to_list()
 
     # Should return products under $100 with only name and price fields
     assert len(results) == 2

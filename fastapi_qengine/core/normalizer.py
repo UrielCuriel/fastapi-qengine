@@ -66,9 +66,7 @@ class FilterNormalizer:
     @classmethod
     def _canon_comparison(cls, key: str) -> str:
         """Return canonical comparison operator (with "$"), or original if unknown."""
-        return cls._COMPARISON_ALIASES.get(
-            key, cls._COMPARISON_ALIASES.get(key.lower(), key)
-        )
+        return cls._COMPARISON_ALIASES.get(key, cls._COMPARISON_ALIASES.get(key.lower(), key))
 
     def normalize(self, filter_input: FilterInput) -> FilterInput:
         """
@@ -119,9 +117,7 @@ class FilterNormalizer:
             # Handle logical operators with or without "$" prefix
             logical_key = self._canon_logical(key)
             if logical_key in ["$and", "$or", "$nor"]:
-                normalized[logical_key] = self._normalize_operator_value(
-                    logical_key, value
-                )
+                normalized[logical_key] = self._normalize_operator_value(logical_key, value)
             else:
                 # Field condition
                 normalized[key] = self._normalize_field_condition(value)
@@ -152,9 +148,7 @@ class FilterNormalizer:
             canon = self._canon_comparison(op)
             # If after canonicalization it's still not a known "$" operator, reject
             if not canon.startswith("$"):
-                raise ValidationError(
-                    f"Invalid operator '{op}'. Use standard names (eq, gt, in, ...) or '$' prefixed"
-                )
+                raise ValidationError(f"Invalid operator '{op}'. Use standard names (eq, gt, in, ...) or '$' prefixed")
             normalized[canon] = value
 
         return normalized
@@ -220,16 +214,14 @@ class FilterNormalizer:
             # Normalize include value to 0 or 1
             if isinstance(include, bool):
                 normalized[field] = 1 if include else 0
+            elif isinstance(include, (int, float)):
+                normalized[field] = int(include)
             else:
-                raise ValidationError(
-                    f"Field inclusion value must be boolean or number, got {type(include)}"
-                )
+                raise ValidationError(f"Field inclusion value must be boolean or number, got {type(include)}")
 
         return normalized
 
-    def _simplify_logical_operators(
-        self, condition: dict[str, object]
-    ) -> dict[str, object]:
+    def _simplify_logical_operators(self, condition: dict[str, object]) -> dict[str, object]:
         """Simplify redundant logical operators."""
         simplified: dict[str, object] = {}
 
@@ -241,24 +233,17 @@ class FilterNormalizer:
 
         return simplified
 
-    def _process_logical_operator(
-        self, operator: str, value: object
-    ) -> dict[str, object]:
+    def _process_logical_operator(self, operator: str, value: object) -> dict[str, object]:
         """Process logical operators ($and, $or) and simplify them."""
         if not isinstance(value, list):
             return {operator: value}
 
         simplified_items = [
-            self._simplify_logical_operators(cast(dict[str, object], item))
-            for item in cast(list[object], value)
+            self._simplify_logical_operators(cast(dict[str, object], item)) for item in cast(list[object], value)
         ]
-        return self._handle_simplified_logical_items(
-            operator, cast(list[object], simplified_items)
-        )
+        return self._handle_simplified_logical_items(operator, cast(list[object], simplified_items))
 
-    def _handle_simplified_logical_items(
-        self, operator: str, items: list[object]
-    ) -> dict[str, object]:
+    def _handle_simplified_logical_items(self, operator: str, items: list[object]) -> dict[str, object]:
         """Handle simplified logical operator items."""
         if len(items) == 1:
             return self._merge_single_logical_item(items[0])
