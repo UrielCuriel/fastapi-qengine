@@ -14,6 +14,7 @@ FieldsSpec: TypeAlias = dict[str, int]
 
 
 T = TypeVar("T", covariant=True)
+QueryResultType = TypeVar("QueryResultType", covariant=True)
 
 
 class FilterFormat(Enum):
@@ -146,10 +147,22 @@ class SecurityPolicy:
     max_array_size: int = 1000
 
 
-class Engine(Protocol[T]):
+class Engine(Protocol[T, QueryResultType]):
     """
     Protocol to standardize query engines for different database backends.
 
     This protocol defines a common interface for all query engines, ensuring that
     they can be used interchangeably within the system.
+
+    Type Parameters:
+        T: The Pydantic model type used for validation and projection.
+        QueryResultType: The backend-specific query result type returned by build_query and execute_query.
     """
+
+    def build_query(self, ast: FilterAST) -> QueryResultType:
+        """Build a query from the given AST."""
+        ...
+
+    def execute_query(self, ast: FilterAST) -> QueryResultType:
+        """Execute a query and return the result."""
+        ...

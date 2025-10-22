@@ -43,13 +43,17 @@ class BeanieQueryCompiler:
         condition: object = self.compile_condition(condition=where_node)
         return query.add_where_condition(condition)
 
-    def apply_order(self, query: QueryAdapter, order_nodes: list[OrderNode]) -> QueryAdapter:
+    def apply_order(
+        self, query: QueryAdapter, order_nodes: list[OrderNode]
+    ) -> QueryAdapter:
         """Apply ordering to the query."""
         for order_node in order_nodes:
             query = query.add_sort(order_node.field, order_node.ascending)
         return query
 
-    def apply_fields(self, query: QueryAdapter, fields_node: FieldsNode) -> QueryAdapter:
+    def apply_fields(
+        self, query: QueryAdapter, fields_node: FieldsNode
+    ) -> QueryAdapter:
         """Apply field projection to the query."""
         return query.set_projection(fields_node.fields)
 
@@ -61,19 +65,25 @@ class BeanieQueryCompiler:
         """Compile a field condition to MongoDB format."""
         compiler: ComparisonCompiler | None = cast(
             ComparisonCompiler,
-            global_operator_registry.get_compiler(condition.operator.value, self.backend_name),
+            global_operator_registry.get_compiler(
+                condition.operator.value, self.backend_name
+            ),
         )
         if not compiler:
             raise CompilerError(f"Unsupported operator: {condition.operator}")
 
         return compiler(condition.field, condition.value)
 
-    def compile_logical_condition(self, condition: LogicalCondition) -> dict[str, list[object]]:
+    def compile_logical_condition(
+        self, condition: LogicalCondition
+    ) -> dict[str, list[object]]:
         """Compile a logical condition to MongoDB format."""
         # Ensure operator_name is a string for the registry lookup
         op: LogicalOperator = getattr(condition.operator, "value", condition.operator)
         if not isinstance(op, str):
-            raise CompilerError(f"Unsupported logical operator type: {type(condition.operator)!r}")
+            raise CompilerError(
+                f"Unsupported logical operator type: {type(condition.operator)!r}"
+            )
         operator_name: str = op
 
         compiler: LogicalCompiler = cast(
@@ -85,7 +95,8 @@ class BeanieQueryCompiler:
 
         # Compile nested conditions
         compiled_conditions: list[object] = [
-            self.compile_condition(nested_condition) for nested_condition in condition.conditions
+            self.compile_condition(nested_condition)
+            for nested_condition in condition.conditions
         ]
 
         return compiler(compiled_conditions)
@@ -93,10 +104,6 @@ class BeanieQueryCompiler:
     def compile_condition(self, condition: ASTNode) -> object:
         """Compile a condition node to backend-specific format."""
         return compile_condition_helper(self, condition)
-
-    def supports_backend(self, backend_type: str) -> bool:
-        """Check if this compiler supports the given backend."""
-        return backend_type == self.backend_name
 
     def build_query(self, ast: FilterAST) -> dict[str, object]:
         """

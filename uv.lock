@@ -584,7 +584,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-qengine"
-version = "0.6.0"
+version = "0.6.3"
 source = { editable = "." }
 
 [package.optional-dependencies]

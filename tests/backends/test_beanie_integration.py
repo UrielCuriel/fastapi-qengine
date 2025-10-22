@@ -9,7 +9,6 @@ from enum import Enum
 import pytest
 import pytest_asyncio
 from beanie import Document, init_beanie  # pyright: ignore[reportUnknownVariableType]
-from beanie.odm.documents import Document
 from beanie.odm.fields import PydanticObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
@@ -224,7 +223,9 @@ async def test_query_with_multiple_transformations(
 
 
 @pytest.mark.asyncio
-async def test_query_with_invalid_field_skipping(engine: BeanieQueryEngine[Document]) -> None:
+async def test_query_with_invalid_field_skipping(
+    engine: BeanieQueryEngine[Document],
+) -> None:
     """Test that invalid fields in projection are skipped."""
     # Query with valid and invalid projection fields
     filter_input: dict[str, object] = {
@@ -239,5 +240,5 @@ async def test_query_with_invalid_field_skipping(engine: BeanieQueryEngine[Docum
     # Should return products under $100 with only name and price fields
     assert len(results) == 2
     for product in results:
-        assert hasattr(product, "name")
-        assert hasattr(product, "price")
+        assert "name" in product
+        assert "price" in product

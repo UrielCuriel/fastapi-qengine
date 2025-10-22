@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import cast
 from collections.abc import Mapping
 
-from beanie import Document, init_beanie
+from beanie import Document, init_beanie  # pyright: ignore[reportUnknownVariableType]
 from fastapi import Depends, FastAPI
 from pymongo import AsyncMongoClient
 
@@ -19,7 +19,9 @@ from fastapi_qengine.backends.beanie import (
     BeanieQueryCompiler,
     BeanieQueryEngine,
 )
-from fastapi_qengine.backends.beanie.engine import BeanieQueryResult
+from fastapi_qengine.backends.beanie.engine import (
+    BeanieQueryResult,
+)  # Result type returned by build_query/execute_query
 
 
 # Define Beanie models
@@ -33,7 +35,7 @@ class Product(Document):
     tags: list[str] = []
 
     class Settings:
-        name = "products"
+        name: str = "products"
 
 
 ProductResponse = create_response_model(Product)
@@ -45,7 +47,8 @@ ProductResponse = create_response_model(Product)
 async def lifespan(app: FastAPI):
     """Initialize database connection."""
     # For demo purposes - in production use proper connection string
-    client = AsyncMongoClient("mongodb://localhost:27017")
+    _ = app
+    client = AsyncMongoClient[Mapping[str, object]]("mongodb://localhost:27017")
     await init_beanie(database=client.demo_db, document_models=[Product])
 
     # Insert sample data if collection is empty
@@ -87,7 +90,7 @@ async def lifespan(app: FastAPI):
                 tags=["kitchen", "ceramic"],
             ),
         ]
-        await Product.insert_many(sample_products)
+        _ = await Product.insert_many(sample_products)
 
     yield
 
@@ -104,9 +107,14 @@ qe_dep = create_qe_dependency(beanie_engine)
 @app.get(
     "/products", response_model=list[ProductResponse], response_model_exclude_none=True
 )
-async def get_products(query_result: BeanieQueryResult[Product] = Depends(qe_dep)):
+async def get_products(
+    query_result: BeanieQueryResult[Product] | None = Depends(qe_dep),  # pyright: ignore[reportCallInDefaultInitializer]
+) -> list[Product]:
     """
     Get products with optional filtering.
+
+    The dependency returns BeanieQueryResult[Product] which is a tuple:
+    (AggregationQuery[Product], Optional[ProjectionModel], Optional[SortSpec])
 
     Examples:
 
@@ -119,11 +127,15 @@ async def get_products(query_result: BeanieQueryResult[Product] = Depends(qe_dep
     - /products?filter={"where":{"$or":[{"category":"electronics"},{"price":{"$lt":20}}]}}
     - /products?filter={"where":{"price":{"$gte":10,"$lte":100}},"order":"name"}
     """
+    if query_result is None:
+        # No filter provided - return all products
+        return await Product.find_all().to_list()
+
     query, _, _ = query_result
     if query:
         products = await query.to_list()
     else:
-        # No filter - return all products
+        # Empty query - return all products
         products = await Product.find_all().to_list()
 
     return products

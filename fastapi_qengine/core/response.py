@@ -1,15 +1,18 @@
 # pyright: basic
 from collections.abc import Iterable
+from typing import TypeVar
 
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 
 from .types import SecurityPolicy
 
+ModelType = TypeVar("ModelType", bound=BaseModel)
+
 
 def create_response_model(
-    model: type[BaseModel], security_policy: SecurityPolicy | None = None
-) -> type[BaseModel]:
+    model: type[ModelType], security_policy: SecurityPolicy | None = None
+) -> type[ModelType]:
     """
     Creates a new Pydantic model with all fields from the original model
     made optional, respecting security policies.
@@ -34,6 +37,7 @@ def create_response_model(
 
     if not filtered_fields:
         raise ValueError(
+            # pyrefly: ignore
             f"Security policy resulted in no available fields for model {model.__name__}. Check allowed_fields and blocked_fields configuration."
         )
 
@@ -42,6 +46,7 @@ def create_response_model(
         name: (field.annotation, Field(default=None))
         for name, field in filtered_fields.items()
     }
+    # pyrefly: ignore
     model_name = f"Optional{model.__name__}"
 
     model_config = model.model_config.copy()
@@ -50,7 +55,7 @@ def create_response_model(
     model_config["extra"] = "ignore"
 
     # pyrefly: ignore
-    new_model: type[BaseModel] = create_model(  # pyright: ignore[reportCallIssue]
+    new_model: type[ModelType] = create_model(  # pyright: ignore[reportCallIssue]
         model_name,
         **field_definitions,  # pyright: ignore[reportArgumentType]
     )

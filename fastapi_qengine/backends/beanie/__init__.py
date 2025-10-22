@@ -10,11 +10,12 @@ from . import operators
 # Import main classes and functions
 from .adapter import BeanieQueryAdapter
 from .compiler import BeanieQueryCompiler
-from .engine import BeanieQueryEngine
+from .engine import BeanieQueryEngine, BeanieQueryResult
 
 __all__ = [
     "BeanieQueryAdapter",
     "BeanieQueryCompiler",
     "BeanieQueryEngine",
+    "BeanieQueryResult",
     "operators",
 ]

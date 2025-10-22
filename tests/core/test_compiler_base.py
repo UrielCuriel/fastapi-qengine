@@ -2,12 +2,11 @@
 Tests for the base query compiler.
 """
 
-from typing import cast
+from typing import cast, override
 
 import pytest
 
 from fastapi_qengine.core.compiler_base import (
-    BaseQueryCompiler,
     QueryAdapter,
     compile_condition_helper,
 )
@@ -32,18 +31,22 @@ class MockQueryAdapter(QueryAdapter):
         self.order_by: list[tuple[str, str]] = []
         self.fields: dict[str, int] | None = None
 
+    @override
     def add_where_condition(self, condition: object) -> QueryAdapter:
         self.where_conditions.append(condition)
         return cast(QueryAdapter, self)
 
+    @override
     def add_sort(self, field: str, ascending: bool = True) -> QueryAdapter:
         self.order_by.append((field, "asc" if ascending else "desc"))
         return cast(QueryAdapter, self)
 
+    @override
     def set_projection(self, fields: dict[str, int]) -> QueryAdapter:
         self.fields = fields
         return cast(QueryAdapter, self)
 
+    @override
     def build(self) -> dict[str, object]:
         return {
             "where": self.where_conditions,
@@ -52,8 +55,10 @@ class MockQueryAdapter(QueryAdapter):
         }
 
 
-class MockQueryCompiler(BaseQueryCompiler):
+class MockQueryCompiler:
     """Mock query compiler for testing."""
+
+    backend_name: str
 
     def __init__(self, backend_name: str):
         self.backend_name = backend_name
@@ -84,12 +89,16 @@ class MockQueryCompiler(BaseQueryCompiler):
         condition = self.compile_condition(where_node)
         return query.add_where_condition(condition)
 
-    def apply_order(self, query: QueryAdapter, order_nodes: list[OrderNode]) -> QueryAdapter:
+    def apply_order(
+        self, query: QueryAdapter, order_nodes: list[OrderNode]
+    ) -> QueryAdapter:
         for node in order_nodes:
-            query.add_sort(node.field, node.ascending)
+            _ = query.add_sort(node.field, node.ascending)
         return query
 
-    def apply_fields(self, query: QueryAdapter, fields_node: FieldsNode) -> QueryAdapter:
+    def apply_fields(
+        self, query: QueryAdapter, fields_node: FieldsNode
+    ) -> QueryAdapter:
         return query.set_projection(fields_node.fields)
 
     def finalize_query(self, query: QueryAdapter):
@@ -98,9 +107,13 @@ class MockQueryCompiler(BaseQueryCompiler):
     def compile_field_condition(self, condition: FieldCondition) -> str:
         return f"{condition.field} {condition.operator.value} {condition.value}"
 
-    def compile_logical_condition(self, condition: LogicalCondition) -> dict:
+    def compile_logical_condition(
+        self, condition: LogicalCondition
+    ) -> dict[str, object]:
         return {
-            condition.operator.value: [self.compile_condition(c) for c in condition.conditions],
+            condition.operator.value: [
+                self.compile_condition(c) for c in condition.conditions
+            ],
         }
 
 
@@ -110,7 +123,9 @@ def test_base_compiler_compile():
         where=LogicalCondition(
             operator=LogicalOperator.AND,
             conditions=[
-                FieldCondition(field="name", operator=ComparisonOperator.EQ, value="test"),
+                FieldCondition(
+                    field="name", operator=ComparisonOperator.EQ, value="test"
+                ),
                 FieldCondition(field="age", operator=ComparisonOperator.GT, value=10),
             ],
         ),
@@ -135,7 +150,7 @@ def test_compile_unknown_node_type():
         pass
 
     with pytest.raises(CompilerError, match="Unknown condition type"):
-        compiler.compile_condition(UnknownNode())
+        _ = compiler.compile_condition(UnknownNode())
 
 
 def test_compiler_with_empty_ast():

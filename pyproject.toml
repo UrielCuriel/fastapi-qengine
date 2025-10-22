@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-qengine"
-version = "0.6.0"
+version = "0.6.3"
 description = "fastapi-qengine is an advanced query engine for FastAPI, inspired by Loopback 4's filtering system. It allows building complex queries directly from URLs with a flexible syntax."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -41,6 +41,10 @@ docs = ["pydoc-markdown>=4.8.2", "pydoc-markdown-nuxt==0.2.1"]
 [build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+"fastapi_qengine" = ["py.typed"]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

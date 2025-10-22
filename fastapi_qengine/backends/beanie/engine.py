@@ -11,7 +11,9 @@ from enum import Enum
 from typing import Generic, TypeAlias, TypeVar, cast, get_args, get_origin
 
 from beanie import Document
+from beanie.odm.enums import SortDirection
 from beanie.odm.queries.aggregation import AggregationQuery
+from beanie.odm.queries.find import FindMany
 from pydantic import BaseModel, TypeAdapter, create_model
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.fields import Field, FieldInfo
@@ -34,10 +36,11 @@ from .compiler import BeanieQueryCompiler
 TDocument = TypeVar(name="TDocument", bound=Document)
 
 # Type alias for Beanie query result tuple
+# Can be either FindMany or AggregationQuery
 BeanieQueryResult: TypeAlias = tuple[
-    AggregationQuery[TDocument],
+    AggregationQuery[TDocument] | FindMany[TDocument],
     type[BaseModel] | None,
-    str | list[tuple[str, int]] | None,
+    str | list[tuple[str, SortDirection]] | None,
 ]
 
 
@@ -48,7 +51,14 @@ class _ProjectionBase(BaseModel):
 
 
 class BeanieQueryEngine(Generic[TDocument]):
-    """High-level query engine for Beanie models."""
+    """
+    High-level query engine for Beanie models.
+
+    This class implements the Engine[TDocument, BeanieQueryResult[TDocument]] protocol,
+    providing a backend-specific implementation for MongoDB/Beanie databases.
+    """
+
+    backend_name: str = "beanie"
 
     def __init__(
         self,
@@ -69,14 +79,17 @@ class BeanieQueryEngine(Generic[TDocument]):
 
     def build_query(self, ast: FilterAST) -> BeanieQueryResult[TDocument]:
         """
-        Build a Beanie aggregation query from FilterAST.
+        Build a Beanie query from FilterAST.
+
+        For simple queries without field projections, returns a find() query.
+        For complex queries with projections, returns an aggregation query.
 
         Args:
             ast: FilterAST to compile
 
         Returns:
             Tuple containing:
-            - query: AggregationQuery (with projection model or dict results)
+            - query: Find or AggregationQuery
             - projection_model: Optional[type[DocumentProjectionType]]
             - sort: Union[None, str, list[tuple[str, SortDirection]]]
         """
@@ -85,26 +98,37 @@ class BeanieQueryEngine(Generic[TDocument]):
 
         query_components: dict[str, object] = self.compiler.compile(ast=validated_ast)
 
-        # Build aggregation pipeline stages
-        pipeline: list[dict[str, object]] = []
+        # If there's a projection, use aggregation pipeline
+        if "projection" in query_components:
+            # Build aggregation pipeline stages
+            pipeline: list[dict[str, object]] = []
 
-        # Apply filter as $match stage
-        self._build_filter_stage(query_components, pipeline)
+            # Apply filter as $match stage
+            self._build_filter_stage(query_components, pipeline)
 
-        # Apply sort as $sort stage
-        sort_spec = self._build_sort_stage(query_components, pipeline)
+            # Apply sort as $sort stage
+            sort_spec = self._build_sort_stage(query_components, pipeline)
 
-        # Handle projection as $project stage
-        projection_model = self._build_projection_stage(query_components, pipeline)
+            # Handle projection as $project stage
+            projection_model = self._build_projection_stage(query_components, pipeline)
 
-        # Create aggregation query with the pipeline
-        query = self._create_aggregation_query(pipeline, projection_model)
+            # Create aggregation query with the pipeline
+            query = self._create_aggregation_query(pipeline, projection_model)
 
-        return (
-            query,
-            projection_model,
-            sort_spec,
-        )
+            return (
+                query,
+                projection_model,
+                sort_spec,
+            )
+        else:
+            # No projection - use simple find() query for better compatibility with apaginate
+            query = self._create_find_query(query_components)
+            sort_spec = self._get_sort_spec(query_components)
+            return (
+                query,
+                None,
+                sort_spec,
+            )
 
     def _build_filter_stage(self, query_components: dict[str, object], pipeline: list[dict[str, object]]) -> None:
         """
@@ -122,7 +146,7 @@ class BeanieQueryEngine(Generic[TDocument]):
 
     def _build_sort_stage(
         self, query_components: dict[str, object], pipeline: list[dict[str, object]]
-    ) -> str | list[tuple[str, int]] | None:
+    ) -> str | list[tuple[str, SortDirection]] | None:
         """
         Build and append sort stage to the aggregation pipeline.
 
@@ -142,7 +166,7 @@ class BeanieQueryEngine(Generic[TDocument]):
 
     def _process_sort_data(
         self, raw_sort: object, pipeline: list[dict[str, object]]
-    ) -> str | list[tuple[str, int]] | None:
+    ) -> str | list[tuple[str, SortDirection]] | None:
         """
         Process sort data and append sort stage to pipeline.
 
@@ -175,7 +199,9 @@ class BeanieQueryEngine(Generic[TDocument]):
         pipeline.append({"$sort": sort_dict})
         return sort_spec
 
-    def _process_list_sort(self, sort_spec: list[object], pipeline: list[dict[str, object]]) -> list[tuple[str, int]]:
+    def _process_list_sort(
+        self, sort_spec: list[object], pipeline: list[dict[str, object]]
+    ) -> list[tuple[str, SortDirection]]:
         """
         Process list sort specification.
 
@@ -188,7 +214,7 @@ class BeanieQueryEngine(Generic[TDocument]):
         """
         sort_dict = self._parse_list_sort_fields(sort_spec)
         pipeline.append({"$sort": sort_dict})
-        return cast(list[tuple[str, int]], sort_spec)
+        return cast(list[tuple[str, SortDirection]], sort_spec)
 
     def _parse_string_sort_fields(self, sort_spec: str) -> dict[str, int]:
         """
@@ -212,7 +238,7 @@ class BeanieQueryEngine(Generic[TDocument]):
 
         return sort_dict
 
-    def _parse_list_sort_fields(self, sort_spec: list[object]) -> dict[str, int]:
+    def _parse_list_sort_fields(self, sort_spec: list[object]) -> dict[str, SortDirection]:
         """
         Parse list sort specification into MongoDB sort dictionary.
 
@@ -222,7 +248,7 @@ class BeanieQueryEngine(Generic[TDocument]):
         Returns:
             MongoDB sort dictionary with field names as keys and sort directions as values
         """
-        sort_dict: dict[str, int] = {}
+        sort_dict: dict[str, SortDirection] = {}
 
         for item in sort_spec:
             if isinstance(item, (list, tuple)):
@@ -231,7 +257,7 @@ class BeanieQueryEngine(Generic[TDocument]):
                     field, direction = item_cast
                     # Direction should be 1 (ascending) or -1 (descending)
                     if isinstance(direction, int) and direction in (1, -1):
-                        sort_dict[cast(str, field)] = direction
+                        sort_dict[cast(str, field)] = SortDirection(direction)
 
         return sort_dict
 
@@ -258,42 +284,77 @@ class BeanieQueryEngine(Generic[TDocument]):
                 # Add $project stage to pipeline
                 pipeline.append({"$project": projection_dict})
         else:
-            # No projection specified - create a projection model with all fields
-            # to ensure we get Document instances instead of dicts
-            all_fields = list(getattr(self.model_class, "model_fields", {}).keys())
-            projection_dict = dict.fromkeys(all_fields, 1)
-            projection_model = self._create_projection_model(projection_dict)
-            # Don't add $project stage for all fields - let Beanie handle it
+            # No projection specified - use the Document model itself as projection
+            # This allows apaginate and other consumers to work with model instances
+            projection_model = cast(type[BaseModel], self.model_class)
 
         return projection_model
 
     def _create_aggregation_query(
-        self, pipeline: list[dict[str, object]], projection_model: type[BaseModel] | None
+        self,
+        pipeline: list[dict[str, object]],
+        projection_model: type[BaseModel] | None,
     ) -> AggregationQuery[TDocument]:
         """
         Create aggregation query from pipeline and projection model.
 
         Args:
             pipeline: Aggregation pipeline stages
-            projection_model: Projection model for typed results
+            projection_model: Projection model for typed results (not used with apaginate)
 
         Returns:
             Configured aggregation query
         """
-        # Always use projection_model to get typed results
-        if projection_model:
-            query = cast(
-                AggregationQuery[TDocument],
-                self.model_class.aggregate(pipeline, projection_model=projection_model),  # pyright: ignore[reportUnknownMemberType]
-            )
-        else:
-            # Fallback - should not happen with the logic above
-            query = cast(
-                AggregationQuery[TDocument],
-                self.model_class.aggregate(pipeline),  # pyright: ignore[reportUnknownMemberType]
-            )
+        # Always create aggregation without projection_model for compatibility with apaginate
+        # The projection_model is returned for reference but not used in the query execution
+        query = cast(
+            AggregationQuery[TDocument],
+            self.model_class.aggregate(pipeline),  # pyright: ignore[reportUnknownMemberType]
+        )
 
         return query
+
+    def _create_find_query(self, query_components: dict[str, object]) -> FindMany[TDocument]:
+        """
+        Create a find() query from query components.
+
+        Args:
+            query_components: Compiled query components
+
+        Returns:
+            Beanie find query
+        """
+        query = self.model_class.find()  # type: ignore[attr-defined]
+
+        # Apply filter
+        if "filter" in query_components:
+            filter_dict_raw = cast(dict[str, object], query_components["filter"])
+            # Convert enum instances to their values for MongoDB compatibility
+            filter_dict = cast(dict[str, object], self._convert_enums_to_values(filter_dict_raw))
+            query = query.find(filter_dict)  # type: ignore[attr-defined,union-attr]
+
+        return query
+
+    def _get_sort_spec(self, query_components: dict[str, object]) -> str | list[tuple[str, SortDirection]] | None:
+        """
+        Extract sort specification from query components without modifying pipeline.
+
+        Args:
+            query_components: Compiled query components
+
+        Returns:
+            Sort specification
+        """
+        if "sort" not in query_components:
+            return None
+
+        raw_sort = query_components["sort"]
+        if isinstance(raw_sort, str):
+            return raw_sort
+        elif isinstance(raw_sort, list):
+            return cast(list[tuple[str, SortDirection]], raw_sort)
+
+        return None
 
     def _validate_and_transform_ast(self, ast: FilterAST) -> FilterAST:
         """

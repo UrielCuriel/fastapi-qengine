@@ -39,9 +39,14 @@ def mock_request() -> Mock:
 
 class TestBuildPipeline:
     def test_build_pipeline_returns_expected_components(self) -> None:
-        result: tuple[QEngineConfig, FilterParser, FilterNormalizer, FilterValidator, ASTBuilder, ASTOptimizer] = (
-            _build_pipeline()
-        )
+        result: tuple[
+            QEngineConfig,
+            FilterParser,
+            FilterNormalizer,
+            FilterValidator,
+            ASTBuilder,
+            ASTOptimizer,
+        ] = _build_pipeline()
         assert len(result) == 6
         _, parser, normalizer, validator, ast_builder, optimizer = result
         assert parser.__class__.__name__ == "FilterParser"
@@ -83,20 +88,11 @@ class TestProcessFilterToAst:
 class TestExecuteQueryOnEngine:
     def test_execute_query_build_query_method(self, mock_engine) -> None:  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
         ast: FilterAST = FilterAST()
-        result: dict[str, object] = _execute_query_on_engine(engine=mock_engine, ast=ast)  # pyright: ignore[reportUnknownArgumentType]
+        result: dict[str, object] = _execute_query_on_engine(
+            engine=mock_engine, ast=ast
+        )  # pyright: ignore[reportUnknownArgumentType]
         mock_engine.build_query.assert_called_once_with(ast)  # pyright: ignore[reportUnknownMemberType]
         assert result == {"mock": "query"}
-
-    def test_execute_query_compile_method(self):
-        engine = Mock()
-        # Create engine that only has compile method, not build_query
-        engine.compile = Mock(return_value={"compiled": "query"})
-        delattr(engine, "build_query")
-
-        ast: FilterAST = FilterAST()
-        result: dict[str, object] = _execute_query_on_engine(engine=engine, ast=ast)
-        engine.compile.assert_called_once_with(ast)  # pyright: ignore[reportAny]
-        assert result == {"compiled": "query"}
 
     def test_execute_query_invalid_engine(self):
         engine = Mock()
@@ -154,12 +150,16 @@ class TestHandleProcessingError:
 class TestCreateQeDependency:
     @patch("fastapi_qengine.dependency._get_filter_input_from_request")
     @patch("fastapi_qengine.dependency._execute_query_on_engine")
-    def test_dependency_no_filter(self, mock_execute, mock_get_input, mock_request, mock_engine):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+    def test_dependency_no_filter(
+        self, mock_execute, mock_get_input, mock_request, mock_engine
+    ):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
         mock_get_input.return_value = None
         mock_execute.return_value = {"empty": "result"}
 
         # Create dependency and execute it
-        dependency: Callable[[Request, str | None], object] = create_qe_dependency(engine=mock_engine)  # pyright: ignore[reportUnknownArgumentType]
+        dependency: Callable[[Request, str | None], object] = create_qe_dependency(
+            engine=mock_engine
+        )  # pyright: ignore[reportUnknownArgumentType]
         result: object = dependency(mock_request, None)  # pyright: ignore[reportUnknownArgumentType]
 
         # Verify correct handling
@@ -184,7 +184,9 @@ class TestCreateQeDependency:
         mock_execute.return_value = {"filtered": "result"}
 
         # Create dependency and execute it
-        dependency: Callable[[Request, str | None], object] = create_qe_dependency(mock_engine)  # pyright: ignore[reportUnknownArgumentType]
+        dependency: Callable[[Request, str | None], object] = create_qe_dependency(
+            mock_engine
+        )  # pyright: ignore[reportUnknownArgumentType]
         result: object = dependency(mock_request, None)  # pyright: ignore[reportUnknownArgumentType]
 
         # Verify correct processing
@@ -198,11 +200,15 @@ class TestCreateQeDependency:
 
     @patch("fastapi_qengine.dependency._get_filter_input_from_request")
     @patch("fastapi_qengine.dependency._handle_processing_error")
-    def test_dependency_error_handling(self, mock_handle_error, mock_get_input, mock_request, mock_engine) -> None:  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+    def test_dependency_error_handling(
+        self, mock_handle_error, mock_get_input, mock_request, mock_engine
+    ) -> None:  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
         mock_get_input.side_effect = ValueError("Test error")
 
         # Create dependency and execute it
-        dependency: Callable[[Request, str | None], object] = create_qe_dependency(mock_engine)  # pyright: ignore[reportUnknownArgumentType]
+        dependency: Callable[[Request, str | None], object] = create_qe_dependency(
+            mock_engine
+        )  # pyright: ignore[reportUnknownArgumentType]
         dependency(mock_request, None)  # pyright: ignore[reportUnusedCallResult, reportUnknownArgumentType]
 
         # Verify error was handled

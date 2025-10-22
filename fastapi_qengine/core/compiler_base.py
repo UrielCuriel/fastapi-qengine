@@ -49,11 +49,15 @@ class BaseQueryCompiler(Protocol[T]):
         """Apply where conditions to the query."""
         ...
 
-    def apply_order(self, query: QueryAdapter, order_nodes: list[OrderNode]) -> QueryAdapter:
+    def apply_order(
+        self, query: QueryAdapter, order_nodes: list[OrderNode]
+    ) -> QueryAdapter:
         """Apply ordering to the query."""
         ...
 
-    def apply_fields(self, query: QueryAdapter, fields_node: FieldsNode) -> QueryAdapter:
+    def apply_fields(
+        self, query: QueryAdapter, fields_node: FieldsNode
+    ) -> QueryAdapter:
         """Apply field projection to the query."""
         ...
 
@@ -69,24 +73,8 @@ class BaseQueryCompiler(Protocol[T]):
         """Finalize the query before returning (default: return as-is)."""
         ...
 
-    def supports_backend(self, backend_type: str) -> bool:
-        """Check if this compiler supports the given backend."""
-        ...
-
     def compile_condition(self, condition: ASTNode) -> object:
         """Compile a condition node to backend-specific format."""
-        ...
-
-    def build_query(self, ast: FilterAST) -> T:
-        """
-        Builds a backend-specific query from a FilterAST.
-
-        Args:
-            ast: The Abstract Syntax Tree representing the filter.
-
-        Returns:
-            A backend-specific query object.
-        """
         ...
 
     def compile(self, ast: FilterAST) -> T:
@@ -103,7 +91,9 @@ class BaseQueryCompiler(Protocol[T]):
 
 
 # Helper function for compile_condition to be used by implementations
-def compile_condition_helper(compiler: BaseQueryCompiler[T], condition: ASTNode) -> object:
+def compile_condition_helper(
+    compiler: BaseQueryCompiler[T], condition: ASTNode
+) -> object:
     """Helper function to compile a condition node to backend-specific format."""
     if isinstance(condition, FieldCondition):
         return compiler.compile_field_condition(condition)

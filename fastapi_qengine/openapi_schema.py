@@ -4,7 +4,7 @@ OpenAPI schema generation for query filters.
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Union, cast, get_args, get_origin, get_type_hints
+from typing import cast, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
@@ -92,24 +92,31 @@ class FilterSchemaGenerator:
 
     def _get_openapi_type(self, python_type: type) -> dict[str, object]:
         """Convert Python type to OpenAPI type."""
-        # Handle List types
         origin = get_origin(python_type)
+
+        # Handle List types
         if origin is list:
             args = get_args(python_type)
             item_type: type = args[0] if args else str
             return {"type": "array", "items": self._get_openapi_type(item_type)}
-        # Handle Union types (including Optional)
-        elif origin is Union:
-            args = get_args(python_type)
-            # For Optional[T] which is Union[T, None], use T
-            non_none_args = [arg for arg in args if arg is not type(None)]
-            if len(non_none_args) == 1:
-                return self._get_openapi_type(non_none_args[0])
+
+        # Handle Union types (both Union and | syntax)
+        if origin is not None:
+            # Check using string comparison for Python 3.10+ compatibility
+            origin_name = getattr(origin, "__name__", str(origin))  # pyright: ignore[reportAny]
+            if "Union" in origin_name:
+                args = get_args(python_type)
+                # For Optional[T] (T | None or Union[T, None]), extract non-None type
+                non_none_args = [arg for arg in args if arg is not type(None)]  # pyright: ignore[reportAny]
+                if len(non_none_args) == 1:
+                    return self._get_openapi_type(non_none_args[0])  # pyright: ignore[reportAny]
 
         result = self.TYPE_MAPPING.get(python_type, {"type": "string"})
         return cast(dict[str, object], result)
 
-    def generate_field_schema(self, field_name: str, field_info: dict[str, object]) -> dict[str, object]:
+    def generate_field_schema(
+        self, field_name: str, field_info: dict[str, object]
+    ) -> dict[str, object]:
         """Generate schema for a field."""
         field_type = self._get_openapi_type(cast(type, field_info["type"]))
 
@@ -185,7 +192,9 @@ class FilterSchemaGenerator:
                     "type": "object",
                     "description": "Field selection",
                     "additionalProperties": {"type": "boolean"},
-                    "example": {list(self.model_fields.keys())[0]: True} if self.model_fields else {},
+                    "example": {list(self.model_fields.keys())[0]: True}
+                    if self.model_fields
+                    else {},
                 },
             },
             "additionalProperties": False,

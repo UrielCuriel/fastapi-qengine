@@ -11,11 +11,10 @@ from typing import cast, get_args, get_origin
 import pytest
 import pytest_asyncio
 from beanie import Document, init_beanie  # pyright: ignore[reportUnknownVariableType]
-from beanie.odm.documents import Document
 from beanie.odm.fields import PydanticObjectId
 from beanie.odm.queries.aggregation import AggregationQuery
+from beanie.odm.queries.find import FindMany
 from pydantic import BaseModel
-from pydantic.main import BaseModel
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
 from pymongo.errors import PyMongoError
@@ -24,7 +23,6 @@ from fastapi_qengine.backends.beanie import (
     BeanieQueryCompiler,
     BeanieQueryEngine,
 )
-from fastapi_qengine.backends.beanie.engine import BeanieQueryEngine
 from fastapi_qengine.core.ast import ASTBuilder
 from fastapi_qengine.core.errors import CompilerError, ParseError, ValidationError
 from fastapi_qengine.core.normalizer import FilterNormalizer
@@ -170,7 +168,7 @@ class TestBeanieCompiler:
         assert query["filter"] == {"category": "electronics"}
 
     @pytest.mark.asyncio
-    async def test_compile_unsupported_operator(self, beanie_compiler: BeanieQueryCompiler) -> None:
+    async def test_compile_unsupported_operator(self) -> None:
         """Test compiling with an unsupported operator raises an error."""
         builder: ASTBuilder = ASTBuilder()
         # Manually create an AST with an invalid operator
@@ -211,11 +209,10 @@ class TestBeanieQueryEngine:
         ast: FilterAST = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
         query, projection_model, sort_spec = engine.build_query(ast)
 
-        # For queries without explicit projection, we still use AggregationQuery with a full projection model
-        assert isinstance(query, AggregationQuery)
+        # For queries without explicit projection, we use FindMany for better compatibility
+        assert isinstance(query, FindMany)
         # The query should be properly constructed
-        assert projection_model is not None  # We create a projection model with all fields
-        assert sort_spec is None
+        assert projection_model is None  # No projection model for simple queries
         assert sort_spec is None
 
     @pytest.mark.asyncio
@@ -341,11 +338,10 @@ class TestBeanieQueryEngine:
         filter_input: dict[str, object] = {"where": {"name": "Test"}}
         ast = ASTBuilder().build(FilterNormalizer().normalize(FilterParser().parse(filter_input)))
         query, projection_model, sort_spec = engine.execute_query(ast)
-        assert isinstance(query, AggregationQuery)
-        # AggregationQuery uses a pipeline instead of find_expressions
-        assert len(query.aggregation_pipeline) > 0
-        assert {"$match": {"name": "Test"}} in query.aggregation_pipeline
-        assert projection_model is not None  # We create a projection model with all fields
+        assert isinstance(query, FindMany)
+        # FindMany uses find_expressions instead of aggregation pipeline
+        assert query.find_expressions == [{"name": "Test"}]
+        assert projection_model is None  # No projection model for simple queries
         assert sort_spec is None
 
 
@@ -376,7 +372,7 @@ class TestBeanieFieldValidation:
         """Test transformation of string to ObjectId."""
         object_id_str = "507f1f77bcf86cd799439011"
         # pyrefly: ignore
-        transformed = engine._transform_value("product_id", "$eq", object_id_str)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        transformed = engine._transform_value("product_id", "$eq", object_id_str)  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed, PydanticObjectId)
         assert str(transformed) == object_id_str
 
@@ -385,7 +381,7 @@ class TestBeanieFieldValidation:
         """Test transformation of ISO string to datetime."""
         date_str = "2023-01-15T10:30:45"
         # pyrefly: ignore
-        transformed = engine._transform_value("created_at", "$eq", date_str)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        transformed = engine._transform_value("created_at", "$eq", date_str)  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed, datetime)
         assert transformed.year == 2023
         assert transformed.month == 1
@@ -398,7 +394,7 @@ class TestBeanieFieldValidation:
         """Test transformation of ISO string to date."""
         date_str = "2023-01-15"
         # pyrefly: ignore
-        transformed = engine._transform_value("release_date", "$eq", date_str)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        transformed = engine._transform_value("release_date", "$eq", date_str)  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed, date)
         assert transformed.year == 2023
         assert transformed.month == 1
@@ -426,7 +422,7 @@ class TestBeanieFieldValidation:
         """Test transformation of list values for $in operator."""
         object_id_list = ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439022"]
         # pyrefly: ignore
-        transformed = engine._transform_value("product_id", "$in", object_id_list)  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        transformed = engine._transform_value("product_id", "$in", object_id_list)  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed, list)
         items = cast(list[object], transformed)
         assert all(isinstance(obj, PydanticObjectId) for obj in items)
@@ -436,21 +432,21 @@ class TestBeanieFieldValidation:
         """Test basic scalar type transformations."""
         # Integer
         # pyrefly: ignore
-        transformed_int = engine._transform_value("stock_count", "$eq", "42")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        transformed_int = engine._transform_value("stock_count", "$eq", "42")  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed_int, int)
         assert transformed_int == 42
 
         # Boolean
         # pyrefly: ignore
-        transformed_bool = engine._transform_value("in_stock", "$eq", "true")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+        transformed_bool = engine._transform_value("in_stock", "$eq", "true")  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed_bool, bool)
         assert transformed_bool is True
 
         # Float
         # pyrefly: ignore
-        transformed_float = engine._transform_value("price", "$eq", "19.99")  # pyright: ignore[reportArgumentType, reportPrivateUsage]
+        transformed_float = engine._transform_value("price", "$eq", "19.99")  # pyright: ignore[reportPrivateUsage]
         assert isinstance(transformed_float, float)
-        assert transformed_float == pytest.approx(19.99)
+        assert transformed_float == pytest.approx(19.99)  # pyright: ignore[reportUnknownMemberType]
 
     @pytest.mark.asyncio
     async def test_validation_in_ast_processing(self, engine: BeanieQueryEngine[Document]):
